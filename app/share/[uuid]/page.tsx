@@ -2,8 +2,14 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Plus, Trash2, Gift, Store, Save, ShieldCheck, AlertTriangle, Lock } from 'lucide-react'
+import { 
+  Plus, Trash2, Gift, Store, Save, ShieldCheck, 
+  AlertTriangle, Lock, Link as LinkIcon, Check, 
+  Loader2, Image as ImageIcon, Users, Download 
+} from 'lucide-react'
 import { useParams } from 'next/navigation'
+import StoreRegistrations from '@/app/admin/components/StoreRegistrations'
+import * as XLSX from 'xlsx' // <--- IMPORTACIÓN DE EXCEL
 
 export default function ClientSharedPage() {
   const params = useParams()
@@ -12,26 +18,25 @@ export default function ClientSharedPage() {
   // --- STATES ---
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [isExporting, setIsExporting] = useState(false) // Nuevo state para el loading del Excel
   
   const [campaign, setCampaign] = useState<any>(null)
   const [stores, setStores] = useState<any[]>([])
   const [prizes, setPrizes] = useState<any[]>([]) 
   const [templates, setTemplates] = useState<any[]>([]) 
-  
   const [selectedStore, setSelectedStore] = useState<string>('')
+  const [activeView, setActiveView] = useState<'stock' | 'registrations'>('stock')
 
   // Inputs
   const [newStoreName, setNewStoreName] = useState('')
-  
-  // Lógica de Stock
   const [localStock, setLocalStock] = useState<Record<string, string>>({})
-  const [savingItems, setSavingItems] = useState<Record<string, boolean>>({})
+  const [isSavingAll, setIsSavingAll] = useState(false)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
 
   // --- INIT ---
   useEffect(() => {
-    if (shareUuid) {
-      initPage()
-    }
+    if (shareUuid) initPage()
   }, [shareUuid])
 
   useEffect(() => {
@@ -85,6 +90,7 @@ export default function ClientSharedPage() {
   }
 
   async function fetchPrizes(storeId: string) {
+    setHasUnsavedChanges(false)
     const { data } = await supabase.from('prizes').select('*').eq('store_id', storeId).eq('is_active', true)
     
     if (data) {
@@ -94,10 +100,68 @@ export default function ClientSharedPage() {
         initialStock[p.name] = p.stock.toString()
       })
       setLocalStock(initialStock)
+    } else {
+      setLocalStock({})
     }
   }
 
-  // --- ACTIONS ---
+  // --- ACTIONS EXCEL (NUEVO) ---
+  const downloadCampaignExcel = async () => {
+    if (!campaign) return
+    setIsExporting(true)
+
+    try {
+      // 1. Obtener todos los registros de la campaña con joins
+      const { data, error } = await supabase
+        .from('registrations')
+        .select(`
+          created_at,
+          full_name,
+          dni,
+          phone,
+          email,
+          stores(name),
+          prizes(name)
+        `)
+        .eq('campaign_id', campaign.id)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+
+      if (!data || data.length === 0) {
+        alert("No hay registros para exportar todavía.")
+        return
+      }
+
+      // 2. Formatear datos para el Excel (Aplanar el JSON)
+      const excelData = data.map(reg => ({
+        'Fecha y Hora': new Date(reg.created_at).toLocaleString('es-PE'),
+        'Participante': reg.full_name,
+        'DNI': reg.dni,
+        'Teléfono': reg.phone || 'No registrado',
+        'Correo': reg.email || 'No registrado',
+        'Tienda/Sucursal': (reg.stores as any)?.name || 'N/A',
+        'Premio Ganado': (reg.prizes as any)?.name || 'Sin Premio / Agotado'
+      }))
+
+      // 3. Crear el libro y la hoja
+      const worksheet = XLSX.utils.json_to_sheet(excelData)
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Participantes")
+
+      // 4. Generar descarga
+      const fileName = `Reporte_${campaign.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`
+      XLSX.writeFile(workbook, fileName)
+
+    } catch (err) {
+      console.error("Error exportando excel:", err)
+      alert("Error al generar el reporte.")
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  // --- OTRAS ACTIONS ---
   const addStore = async () => {
     if (!newStoreName || !campaign?.id) return
     const { data } = await supabase.from('stores').insert({ name: newStoreName, campaign_id: campaign.id }).select()
@@ -105,6 +169,7 @@ export default function ClientSharedPage() {
       setNewStoreName('')
       fetchStores()
       setSelectedStore(data[0].id)
+      setActiveView('stock')
     }
   }
 
@@ -116,226 +181,237 @@ export default function ClientSharedPage() {
         if (selectedStore === id) {
             setSelectedStore('')
             setPrizes([])
+            setHasUnsavedChanges(false)
         }
     }
   }
 
   const handleLocalStockChange = (templateName: string, val: string) => {
     setLocalStock(prev => ({ ...prev, [templateName]: val }))
+    setHasUnsavedChanges(true) 
   }
 
-  const saveStockToDb = async (templateName: string) => {
+  const saveAllStockToDb = async () => {
     if (!selectedStore || !campaign?.id) return
-    
-    // Doble check por seguridad
-    const alreadySaved = prizes.find(p => p.name === templateName && p.stock > 0)
-    if (alreadySaved) return;
+    setIsSavingAll(true)
+    const templatesToSave = templates.filter(template => {
+        const valStr = localStock[template.name]
+        const isAlreadyLocked = prizes.some(p => p.name === template.name && p.stock > 0)
+        return valStr && valStr !== '' && !isAlreadyLocked
+    })
 
-    setSavingItems(prev => ({ ...prev, [templateName]: true }))
-
-    const valStr = localStock[templateName]
-    const stockVal = valStr && valStr !== '' ? parseInt(valStr) : 0
-
-    const { data, error } = await supabase
-        .from('prizes')
-        .upsert({
-            store_id: selectedStore,
-            campaign_id: campaign.id,
-            name: templateName,
-            stock: stockVal,
-            is_active: true
-        }, { onConflict: 'store_id, name' })
-        .select()
-        .single()
-
-    setSavingItems(prev => ({ ...prev, [templateName]: false }))
-
-    if (!error) {
-        setPrizes(prev => {
-            const exists = prev.find(p => p.name === templateName)
-            if (exists) {
-                return prev.map(p => p.name === templateName ? { ...p, stock: stockVal } : p)
-            } else {
-                return [...prev, data]
-            }
-        })
+    if (templatesToSave.length === 0) {
+        setIsSavingAll(false)
+        setHasUnsavedChanges(false)
+        return
     }
+
+    const prizesToUpsert = templatesToSave.map(template => ({
+        store_id: selectedStore,
+        campaign_id: campaign.id,
+        name: template.name,
+        stock: parseInt(localStock[template.name] || '0'),
+        is_active: true,
+        image_url: template.image_url
+    }))
+
+    const { error } = await supabase.from('prizes').upsert(prizesToUpsert, { onConflict: 'store_id, name' })
+
+    if (error) alert("Error al guardar parte del stock.")
+    await fetchPrizes(selectedStore)
+    setIsSavingAll(false)
+    setHasUnsavedChanges(false)
   }
 
-  // --- RENDER ---
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-zinc-400">Cargando campaña...</div>
-  if (error) return <div className="min-h-screen flex items-center justify-center text-red-400">Enlace inválido o expirado.</div>
+  const handleCopyLink = (e: React.MouseEvent, storeId: string) => {
+    e.stopPropagation() 
+    const baseUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'http://localhost:3000' 
+    const url = `${baseUrl}/registro/${storeId}`
+    navigator.clipboard.writeText(url)
+    setCopiedId(storeId)
+    setTimeout(() => setCopiedId(null), 2000)
+  }
+
+  if (loading) return <div className="min-h-screen bg-[#F5F5F7] dark:bg-black flex items-center justify-center"><Loader2 className="animate-spin text-zinc-400" size={32} /></div>
+  if (error) return <div className="min-h-screen bg-[#F5F5F7] dark:bg-black flex items-center justify-center text-red-500 font-medium">Enlace inválido.</div>
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 p-4 md:p-8 font-sans">
-      <div className="max-w-6xl mx-auto">
+    <div className="min-h-screen bg-[#F5F5F7] dark:bg-black text-zinc-900 dark:text-zinc-100 p-4 sm:p-6 lg:p-8 font-sans relative selection:bg-blue-200 overflow-x-hidden">
+      <div className="max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out">
         
-        {/* HEADER CLIENTE */}
-        <header className="mb-8 flex flex-col md:flex-row md:items-end justify-between border-b border-zinc-200 dark:border-zinc-800 pb-6 gap-4">
+        {/* HEADER MEJORADO CON BOTÓN EXCEL */}
+        <header className="mb-8 sm:mb-12 flex flex-col md:flex-row md:items-end justify-between pb-6 gap-6 border-b border-zinc-200/50 dark:border-zinc-800/50">
             <div>
-                <div className="flex items-center gap-2 mb-2">
-                    <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs px-2 py-1 rounded-md font-bold uppercase tracking-wider flex items-center gap-1">
-                        <ShieldCheck size={12}/> Acceso Seguro
+                <div className="flex items-center gap-2 mb-3">
+                    <span className="bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-300 text-[10px] px-3 py-1.5 rounded-full font-bold uppercase tracking-widest flex items-center gap-1.5 shadow-sm">
+                        <ShieldCheck size={14} className="text-blue-500"/> Panel Seguro
                     </span>
-                    <span className="text-zinc-400 text-xs">Gestor de Premios</span>
                 </div>
-                <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
+                <h1 className="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-black dark:text-white">
                     {campaign.name}
                 </h1>
-                
-                {/* DISCLAIMER IMPORTANTE */}
-                <div className="mt-3 flex items-start gap-2 bg-amber-50 dark:bg-amber-900/10 p-3 rounded-lg border border-amber-200 dark:border-amber-800/30 max-w-2xl">
-                    <AlertTriangle className="text-amber-600 dark:text-amber-500 shrink-0 mt-0.5" size={16} />
-                    <p className="text-sm text-amber-800 dark:text-amber-200/80 leading-snug">
-                        <strong>Importante:</strong> El stock asignado <u>no se puede editar</u> una vez guardado. Esto garantiza que cada premio tenga un código único e inalterable. Si cometes un error, elimina la tienda y créala de nuevo.
-                    </p>
-                </div>
             </div>
+
+            {/* BOTÓN EXCEL ESTILO APPLE */}
+            <button
+                onClick={downloadCampaignExcel}
+                disabled={isExporting}
+                className="group flex items-center gap-2.5 bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-black dark:text-white px-6 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-700 shadow-sm transition-all active:scale-95 disabled:opacity-50"
+            >
+                {isExporting ? (
+                    <Loader2 size={18} className="animate-spin text-zinc-400" />
+                ) : (
+                    <div className="bg-green-100 dark:bg-green-900/30 p-1.5 rounded-lg group-hover:scale-110 transition-transform">
+                        <Download size={18} className="text-green-600 dark:text-green-400" />
+                    </div>
+                )}
+                <div className="text-left">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 leading-none mb-1">Exportar Data</p>
+                    <p className="text-sm font-bold leading-none">Reporte General Excel</p>
+                </div>
+            </button>
         </header>
 
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
+        {/* ... (Resto del código de tiendas y tabs) */}
+        
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 relative pb-24">
             
             {/* COLUMNA 1: TIENDAS */}
-            <div className="md:col-span-4 flex flex-col h-[600px] bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border border-zinc-200 dark:border-zinc-800 p-4">
-                <h2 className="font-bold flex items-center gap-2 text-lg mb-4">
-                    <Store className="text-zinc-400" size={20}/> Mis Tiendas
-                </h2>
-                <div className="flex gap-2 mb-4">
+            <div className="lg:col-span-4 flex flex-col h-[500px] lg:h-[700px] bg-zinc-100/50 dark:bg-zinc-900/30 backdrop-blur-xl rounded-[2.5rem] border border-white dark:border-zinc-800/50 p-3 sm:p-4 shadow-inner">
+                <div className="px-3 pt-3 pb-5">
+                    <h2 className="font-bold text-xl flex items-center gap-2 text-zinc-800 dark:text-zinc-200 tracking-tight">
+                        <Store className="text-blue-500" size={22}/> Puntos de Entrega
+                    </h2>
+                </div>
+                
+                <div className="flex gap-2 mb-4 px-2">
                     <input 
-                        className="flex-1 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
-                        placeholder="Nombre nueva tienda..."
+                        className="flex-1 bg-white dark:bg-zinc-900 border border-zinc-200/50 dark:border-zinc-800 rounded-2xl px-5 py-3.5 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm font-medium"
+                        placeholder="Añadir nueva tienda..."
                         value={newStoreName}
                         onChange={(e) => setNewStoreName(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && addStore()}
                     />
-                    <button onClick={addStore} className="bg-black text-white dark:bg-white dark:text-black p-2.5 rounded-xl hover:opacity-80 transition-opacity">
-                        <Plus size={20}/>
+                    <button onClick={addStore} className="bg-blue-600 text-white px-5 rounded-2xl hover:bg-blue-700 transition-all active:scale-90 shadow-lg shadow-blue-500/20 flex items-center justify-center">
+                        <Plus size={22} strokeWidth={2.5}/>
                     </button>
                 </div>
-                <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar space-y-2">
+
+                <div className="flex-1 overflow-y-auto px-2 pb-2 custom-scrollbar space-y-2.5">
                     {stores.map(s => (
                         <div 
                             key={s.id} 
-                            onClick={() => setSelectedStore(s.id)}
-                            className={`group p-4 rounded-xl cursor-pointer border flex justify-between items-center transition-all
+                            onClick={() => {
+                                setSelectedStore(s.id);
+                                setActiveView('stock');
+                            }}
+                            className={`group relative p-4 rounded-[1.5rem] cursor-pointer flex justify-between items-center transition-all duration-300 ease-out border
                                 ${selectedStore === s.id 
-                                    ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800 shadow-sm' 
-                                    : 'bg-zinc-50 border-transparent hover:bg-zinc-100 dark:bg-zinc-800/30 dark:hover:bg-zinc-800 dark:border-zinc-800'
+                                    ? 'bg-white dark:bg-zinc-800 border-zinc-200/50 dark:border-zinc-700 shadow-[0_8px_30px_rgb(0,0,0,0.08)] scale-[1.02]' 
+                                    : 'bg-transparent border-transparent hover:bg-white/50 dark:hover:bg-zinc-800/30 hover:border-zinc-200/30'
                                 }
                             `}
                         >
-                            <span className={`text-sm ${selectedStore === s.id ? 'font-bold text-blue-700 dark:text-blue-300' : ''}`}>
+                            <span className={`text-[15px] truncate pr-4 transition-all ${selectedStore === s.id ? 'font-bold text-black dark:text-white' : 'font-medium text-zinc-500 dark:text-zinc-400'}`}>
                                 {s.name}
                             </span>
-                            <button 
-                                onClick={(e) => { e.stopPropagation(); deleteStore(s.id) }} 
-                                className="text-zinc-300 hover:text-red-500 p-1 rounded-md opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                                <Trash2 size={16}/>
-                            </button>
+                            
+                            <div className="flex items-center gap-1.5 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-all duration-300 transform translate-x-2 lg:group-hover:translate-x-0">
+                                <button 
+                                    onClick={(e) => handleCopyLink(e, s.id)} 
+                                    className="bg-zinc-100 dark:bg-zinc-900/80 hover:bg-blue-500 hover:text-white text-zinc-500 p-2.5 rounded-full backdrop-blur-md transition-all active:scale-75 shadow-sm"
+                                >
+                                    {copiedId === s.id ? <Check size={16} strokeWidth={3} /> : <LinkIcon size={16} />}
+                                </button>
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); deleteStore(s.id) }} 
+                                    className="bg-zinc-100 dark:bg-zinc-900/80 hover:bg-red-500 hover:text-white text-zinc-500 p-2.5 rounded-full backdrop-blur-md transition-all active:scale-75 shadow-sm"
+                                >
+                                    <Trash2 size={16}/>
+                                </button>
+                            </div>
                         </div>
                     ))}
                 </div>
             </div>
 
-            {/* COLUMNA 2: STOCK */}
-            <div className="md:col-span-8 flex flex-col h-[600px] bg-zinc-100 dark:bg-zinc-900/50 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-6">
+            {/* COLUMNA 2: ÁREA DE GESTIÓN */}
+            <div className="lg:col-span-8 flex flex-col min-h-[700px]">
                 {selectedStore ? (
-                    <>
-                        <div className="mb-6 pb-4 border-b border-zinc-200 dark:border-zinc-800">
-                            <h2 className="font-bold text-xl flex items-center gap-2">
-                                <Gift className="text-purple-500" size={24}/> Inventario de Premios
-                            </h2>
-                            <p className="text-sm text-zinc-500 mt-1">
-                                Asignando stock para: <span className="font-bold text-black dark:text-white">{stores.find(s=>s.id === selectedStore)?.name}</span>
-                            </p>
+                    <div className="animate-in fade-in slide-in-from-right-8 duration-500 h-full flex flex-col">
+                        <div className="mb-6 px-2 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-5">
+                            <div>
+                                <h2 className="font-black text-3xl tracking-tight text-zinc-900 dark:text-white mb-2">
+                                    {stores.find(s=>s.id === selectedStore)?.name}
+                                </h2>
+                                <p className="text-sm text-zinc-500 font-medium">
+                                    {activeView === 'stock' ? 'Configura el inventario para esta ubicación.' : 'Monitorea los premios entregados.'}
+                                </p>
+                            </div>
+
+                            <div className="flex bg-zinc-200/50 dark:bg-zinc-800/50 p-1.5 rounded-[1.25rem] w-full sm:w-auto shadow-inner">
+                                <button
+                                    onClick={() => setActiveView('stock')}
+                                    className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 ${activeView === 'stock' ? 'bg-white dark:bg-zinc-700 shadow-[0_2px_10px_rgb(0,0,0,0.08)] text-black dark:text-white scale-[1.02]' : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'}`}
+                                >
+                                    <Gift size={16} /> Inventario
+                                </button>
+                                <button
+                                    onClick={() => setActiveView('registrations')}
+                                    className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 ${activeView === 'registrations' ? 'bg-white dark:bg-zinc-700 shadow-[0_2px_10px_rgb(0,0,0,0.08)] text-black dark:text-white scale-[1.02]' : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'}`}
+                                >
+                                    <Users size={16} /> Registros
+                                </button>
+                            </div>
                         </div>
 
-                        {templates.length === 0 ? (
-                            <div className="flex-1 flex flex-col items-center justify-center text-zinc-400">
-                                <p>No hay premios configurados para esta campaña.</p>
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto pr-2 pb-2 custom-scrollbar">
+                        {activeView === 'stock' ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 lg:gap-6 overflow-y-auto pb-4 custom-scrollbar px-1 pt-1">
                                 {templates.map(template => {
                                     const val = localStock[template.name] ?? ''
-                                    const isSaving = savingItems[template.name]
-                                    
-                                    // Verificamos si YA se guardó stock en la BD para este premio
-                                    // Si existe stock > 0, se bloquea.
                                     const existingPrize = prizes.find(p => p.name === template.name)
                                     const isLocked = existingPrize && existingPrize.stock > 0
-
                                     return (
-                                        <div key={template.id} className="relative group/card">
-                                            <div className={`
-                                                bg-white dark:bg-zinc-900 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm transition-all flex flex-col justify-between h-32
-                                                ${isLocked ? 'opacity-70 grayscale-[0.5] cursor-not-allowed' : 'hover:border-blue-300 dark:hover:border-blue-700'}
-                                            `}>
-                                                <div>
-                                                    <div className="flex justify-between items-start">
-                                                        <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Premio</span>
-                                                        {isLocked && <Lock size={12} className="text-zinc-400"/>}
-                                                    </div>
-                                                    <h3 className="font-bold text-lg text-zinc-800 dark:text-zinc-100 leading-tight line-clamp-2 mt-1" title={template.name}>
-                                                        {template.name}
-                                                    </h3>
-                                                </div>
-                                                
-                                                <div className="flex gap-2 mt-3">
-                                                    <div className={`flex-1 flex items-center bg-zinc-50 dark:bg-zinc-950 rounded-lg border border-zinc-200 dark:border-zinc-800 px-3 py-1.5 transition-all ${!isLocked && 'focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500'}`}>
-                                                        <span className="text-xs text-zinc-400 font-medium mr-2">Cant:</span>
-                                                        <input 
-                                                            type="number" 
-                                                            min="0"
-                                                            disabled={!!isLocked}
-                                                            className="w-full bg-transparent font-mono font-bold text-lg outline-none text-right disabled:text-zinc-400 disabled:cursor-not-allowed"
-                                                            placeholder="0"
-                                                            value={val}
-                                                            onChange={(e) => handleLocalStockChange(template.name, e.target.value)}
-                                                        />
-                                                    </div>
-                                                    <button 
-                                                        onClick={() => saveStockToDb(template.name)}
-                                                        disabled={!!isLocked || isSaving}
-                                                        className={`
-                                                            px-3 rounded-lg flex items-center justify-center transition-all
-                                                            ${isLocked 
-                                                                ? 'bg-zinc-100 text-zinc-300 cursor-not-allowed border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-600' 
-                                                                : isSaving 
-                                                                    ? 'bg-zinc-200 text-zinc-400'
-                                                                    : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-95 shadow-lg shadow-blue-500/20'
-                                                            }
-                                                        `}
-                                                    >
-                                                        {isLocked ? <Lock size={16}/> : <Save size={18}/>}
-                                                    </button>
+                                        <div key={template.id} className={`relative flex flex-col bg-white dark:bg-zinc-900 rounded-[2rem] shadow-sm overflow-hidden border border-white dark:border-zinc-800 transition-all duration-300 ${isLocked ? 'opacity-80' : 'hover:shadow-xl hover:-translate-y-1'}`}>
+                                            <div className="aspect-[4/3] w-full bg-[#F5F5F7] dark:bg-black/40 p-6 flex items-center justify-center relative">
+                                                {isLocked && <div className="absolute top-4 right-4 bg-white/90 dark:bg-zinc-800/90 backdrop-blur-md px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm z-10"><Lock size={12} className="text-zinc-500" /><span className="text-[10px] font-bold uppercase">Fijado</span></div>}
+                                                {template.image_url ? <img src={template.image_url} className="w-full h-full object-contain drop-shadow-xl" /> : <ImageIcon size={48} className="text-zinc-300" />}
+                                            </div>
+                                            <div className="p-5 flex flex-col gap-4 border-t border-zinc-100 dark:border-zinc-800/50">
+                                                <h3 className="font-bold text-[17px] truncate">{template.name}</h3>
+                                                <div className={`flex items-center justify-between bg-zinc-50 dark:bg-black/50 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 px-4 py-3 transition-all ${!isLocked && 'focus-within:ring-2 focus-within:ring-blue-500/30 focus-within:bg-white'}`}>
+                                                    <span className="text-[11px] text-zinc-400 font-bold uppercase tracking-widest">Stock</span>
+                                                    <input type="number" min="0" disabled={!!isLocked} className="w-full bg-transparent font-medium text-xl outline-none text-right disabled:text-zinc-400" value={val} onChange={(e) => handleLocalStockChange(template.name, e.target.value)} />
                                                 </div>
                                             </div>
-
-                                            {/* TOOLTIP DE BLOQUEO (Solo aparece al hover si está bloqueado) */}
-                                            {isLocked && (
-                                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/card:opacity-100 transition-opacity pointer-events-none z-10">
-                                                    <div className="bg-black/80 text-white text-xs px-3 py-2 rounded-lg shadow-xl backdrop-blur-sm max-w-[80%] text-center">
-                                                        Stock guardado. No editable.
-                                                    </div>
-                                                </div>
-                                            )}
                                         </div>
                                     )
                                 })}
                             </div>
+                        ) : (
+                            <div className="flex-1 bg-white/60 dark:bg-zinc-900/60 backdrop-blur-xl rounded-[2.5rem] border border-white dark:border-zinc-800 shadow-sm overflow-hidden p-4 sm:p-6 mb-2">
+                                <StoreRegistrations storeId={selectedStore} />
+                            </div>
                         )}
-                    </>
+                    </div>
                 ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center text-zinc-400">
-                        <div className="w-16 h-16 bg-zinc-200 dark:bg-zinc-800 rounded-full flex items-center justify-center mb-4">
-                            <Store size={32} className="opacity-50"/>
-                        </div>
-                        <p className="text-lg font-medium">Selecciona una tienda</p>
+                    <div className="flex-1 flex flex-col items-center justify-center text-zinc-400 bg-white/40 dark:bg-zinc-900/20 backdrop-blur-xl rounded-[3rem] border-2 border-dashed border-white dark:border-zinc-800/50 shadow-sm m-2">
+                        <Store size={48} className="text-blue-500 mb-6"/>
+                        <p className="text-2xl font-bold tracking-tight text-zinc-700">Panel de Gestión</p>
+                        <p className="text-sm mt-2">Selecciona una tienda a la izquierda.</p>
                     </div>
                 )}
             </div>
+
+            {/* BOTÓN FLOTANTE */}
+            {hasUnsavedChanges && activeView === 'stock' && (
+                <div className="fixed bottom-6 lg:bottom-10 left-0 right-0 flex justify-center z-50 animate-in slide-in-from-bottom-12 fade-in duration-500 pointer-events-none px-4">
+                    <button onClick={saveAllStockToDb} disabled={isSavingAll} className="pointer-events-auto bg-black dark:bg-white text-white dark:text-black pl-5 pr-8 py-4 rounded-full font-bold shadow-2xl flex items-center gap-3 active:scale-95 transition-all">
+                        {isSavingAll ? <Loader2 className="animate-spin" size={24}/> : <><div className="bg-blue-500 p-2 rounded-full text-white"><Save size={18} strokeWidth={2.5}/></div> Confirmar y Guardar Cambios</>}
+                    </button>
+                </div>
+            )}
+
         </div>
       </div>
     </div>
