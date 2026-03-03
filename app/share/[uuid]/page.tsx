@@ -113,12 +113,13 @@ export default function ClientSharedPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <aside className="lg:col-span-4">
             <StoresSidebar 
-              stores={stores} 
-              selectedStore={selectedStore} 
-              onSelect={(id: string) => { setSelectedStore(id); setActiveView('stock') }}
-              campaignId={campaign?.id}
-              refreshStores={() => initPage()}
-            />
+    stores={stores} 
+    selectedStore={selectedStore} 
+    onSelect={(id: string) => { setSelectedStore(id); setActiveView('stock') }}
+    campaignId={campaign?.id}
+    campaignUrl={campaign?.campaign_url} // <--- FALTA ESTA LÍNEA
+    refreshStores={() => initPage()}
+  />
           </aside>
 
           <main className="lg:col-span-8 flex flex-col gap-6">

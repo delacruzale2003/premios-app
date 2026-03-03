@@ -32,11 +32,11 @@ export default function InventoryGrid({ templates, prizes, localStock, onChange,
               {/* INFO & INPUT */}
               <div className="p-6 flex flex-col gap-4">
                 <h3 className="font-bold text-lg leading-tight line-clamp-2">{template.name}</h3>
-                <div className={`flex items-center justify-between bg-zinc-50 dark:bg-black/50 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 px-4 py-3 transition-all ${!isLocked && 'focus-within:ring-2 focus-within:ring-blue-500/30 focus-within:bg-white'}`}>
-                  <span className="text-[10px] text-zinc-400 font-black uppercase tracking-widest">Stock</span>
+                <div className={`flex items-center justify-between  dark:bg-black/50 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 px-4 py-3 transition-all ${!isLocked && 'focus-within:ring-2 focus-within:ring-blue-500/30 focus-within:bg-black'}`}>
+                  <span className="text-[10px] text-black-400 font-black uppercase tracking-widest">Stock</span>
                   <input 
                     type="number" min="0" disabled={isLocked}
-                    className="w-full bg-transparent font-bold text-xl outline-none text-right disabled:text-zinc-400"
+                    className="w-full bg-black font-bold text-xl outline-none text-right "
                     value={val}
                     onChange={(e) => onChange(template.name, e.target.value)}
                   />
