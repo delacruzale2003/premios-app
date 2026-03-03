@@ -1,8 +1,10 @@
-import { Plus, Store, Link as LinkIcon, Check, Trash2 } from 'lucide-react'
+'use client'
+
+import { Plus, Store, Link as LinkIcon, Check, Trash2, Download } from 'lucide-react'
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { QRCodeCanvas } from 'qrcode.react'
 
-// Añadimos 'campaignUrl' a las props
 export default function StoresSidebar({ stores, selectedStore, onSelect, campaignId, campaignUrl, refreshStores }: any) {
   const [newStoreName, setNewStoreName] = useState('')
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -16,23 +18,42 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
     }
   }
 
+  // --- LINK SIMPLIFICADO (Sin https ni www) ---
+  const getStoreLink = (id: string) => {
+    // Quitamos protocolos para que el QR sea menos denso y más estético
+    const baseDomain = (campaignUrl || 'fanta.ptm.pe').replace('https://', '').replace('www.', '')
+    return `${baseDomain}/registro/${id}`
+  }
+
   const handleCopyLink = (e: any, id: string) => {
     e.stopPropagation()
-    
-    // USAMOS LA URL DE LA BD: Si no existe, usamos un fallback por seguridad
-    const baseDomain = campaignUrl || 'fanta.ptm.pe'
-    
-    // Construimos el link apuntando a la web de registro externa
-    const url = `https://${baseDomain}/registro/${id}`
-    
-    navigator.clipboard.writeText(url)
+    // Para el copiado al portapapeles sí dejamos el https para que sea clickeable
+    const fullUrl = `https://${getStoreLink(id)}`
+    navigator.clipboard.writeText(fullUrl)
     setCopiedId(id)
     setTimeout(() => setCopiedId(null), 2000)
   }
 
+  const downloadQr = (e: any, store: any) => {
+    e.stopPropagation()
+    const canvas = document.getElementById(`qr-${store.id}`) as HTMLCanvasElement
+    if (!canvas) return
+
+    const pngUrl = canvas
+      .toDataURL("image/png")
+      .replace("image/png", "image/octet-stream")
+
+    const downloadLink = document.createElement("a")
+    downloadLink.href = pngUrl
+    downloadLink.download = `QR_${store.name.replace(/\s+/g, '_')}.png`
+    document.body.appendChild(downloadLink)
+    downloadLink.click()
+    document.body.removeChild(downloadLink)
+  }
+
   const deleteStore = async (e: any, id: string) => {
     e.stopPropagation()
-    if (!confirm("¿Eliminar tienda? Se perderá el stock asignado.")) return
+    if (!confirm("¿Eliminar tienda?")) return
     await supabase.from('stores').update({ is_active: false }).eq('id', id)
     refreshStores()
   }
@@ -72,20 +93,42 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
             </span>
             
             <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">
+              
+              {/* BOTÓN DESCARGAR QR */}
+              <button 
+                onClick={(e) => downloadQr(e, s)} 
+                className="bg-zinc-100 dark:bg-zinc-700 p-2.5 rounded-full hover:bg-black hover:text-white transition-all shadow-sm"
+                title="Descargar QR Limpio"
+              >
+                <Download size={14} />
+              </button>
+
               <button 
                 onClick={(e) => handleCopyLink(e, s.id)} 
                 className="bg-zinc-100 dark:bg-zinc-700 p-2.5 rounded-full hover:bg-blue-500 hover:text-white transition-all shadow-sm"
-                title="Copiar link de registro"
               >
                 {copiedId === s.id ? <Check size={14} strokeWidth={3}/> : <LinkIcon size={14} />}
               </button>
+              
               <button 
                 onClick={(e) => deleteStore(e, s.id)} 
                 className="bg-zinc-100 dark:bg-zinc-700 p-2.5 rounded-full hover:bg-red-500 hover:text-white transition-all shadow-sm"
-                title="Eliminar tienda"
               >
                 <Trash2 size={14}/>
               </button>
+
+              {/* QR OCULTO OPTIMIZADO */}
+              <div className="hidden">
+                <QRCodeCanvas 
+                  id={`qr-${s.id}`} 
+                  value={getStoreLink(s.id)} 
+                  size={1024} // Súper alta resolución para impresión
+                  level={"M"}  // Nivel medio: menos puntos, más estético
+                  marginSize={1} // Un poco de aire blanco alrededor
+                  bgColor={"#ffffff"}
+                  fgColor={"#000000"}
+                />
+              </div>
             </div>
           </div>
         ))}
