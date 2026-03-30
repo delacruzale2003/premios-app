@@ -60,21 +60,42 @@ export default function ClientSharedPage() {
     setLocalStock(initialStock)
   }
 
-  const saveAllStockToDb = async () => {
+const saveAllStockToDb = async () => {
     if (!selectedStore || !campaign) return
     setIsSavingAll(true)
-    const prizesToUpsert = templates
-      .filter(t => localStock[t.name] && !prizes.some(p => p.name === t.name && p.stock > 0))
-      .map(t => ({
+
+    const prizesToUpsert = templates.map(t => {
+      // Buscamos si este premio ya fue creado antes para esta tienda
+      const existingPrize = prizes.find(p => p.name === t.name)
+      
+      const payload: any = {
         store_id: selectedStore,
         campaign_id: campaign.id,
         name: t.name,
         stock: parseInt(localStock[t.name] || '0'),
         image_url: t.image_url,
-        is_active: true
-      }))
+        is_active: true,
+        batch_number: 1 // <- NUEVO: Forzamos el batch 1 para estas tiendas
+      }
 
-    await supabase.from('prizes').upsert(prizesToUpsert, { onConflict: 'store_id, name' })
+      // Si el premio ya existe, inyectamos su ID para que Supabase haga un UPDATE
+      if (existingPrize) {
+        payload.id = existingPrize.id
+        // Respetamos su batch original por si acaso ya tenía uno asignado en BD
+        payload.batch_number = existingPrize.batch_number 
+      }
+
+      return payload
+    }).filter(p => p.stock >= 0)
+
+    // Hacemos el upsert limpio, confiando en el Primary Key (id)
+    const { error } = await supabase.from('prizes').upsert(prizesToUpsert)
+
+    if (error) {
+      console.error("Error guardando el stock:", error)
+      alert("Hubo un error al guardar el inventario. Revisa la consola.")
+    }
+
     await fetchPrizes(selectedStore)
     setIsSavingAll(false)
   }

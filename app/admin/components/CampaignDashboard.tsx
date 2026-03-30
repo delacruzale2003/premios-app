@@ -1,8 +1,25 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
-import { Plus, Copy, Trash2, Gift, Store, Lock, Globe, AlertCircle, Save, ImagePlus, Loader2,CalendarClock } from 'lucide-react'
+import { createClient } from '@supabase/supabase-js'
+import { 
+  Plus, 
+  Copy, 
+  Trash2, 
+  Gift, 
+  Store, 
+  Lock, 
+  AlertCircle, 
+  Save, 
+  ImagePlus, 
+  Loader2,
+  CalendarClock 
+} from 'lucide-react'
+
+// --- CONFIGURACIÓN DE SUPABASE ---
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 interface Props {
   campaignId: string
@@ -25,15 +42,14 @@ export default function CampaignDashboard({ campaignId }: Props) {
   const [localStock, setLocalStock] = useState<Record<string, string>>({})
   const [savingItems, setSavingItems] = useState<Record<string, boolean>>({})
 
-
-
-  
-// Inputs para Nueva Tienda / Premios
-      const [newStoreName, setNewStoreName] = useState('')
+  // Inputs para Nueva Tienda / Premios
+  const [newStoreName, setNewStoreName] = useState('')
   const [newTemplateName, setNewTemplateName] = useState('')
   const [newTemplateImage, setNewTemplateImage] = useState<File | null>(null)
   const [isUploadingTemplate, setIsUploadingTemplate] = useState(false)
-
+  
+  // Estado para la actualización de imagen existente
+  const [updatingTemplateId, setUpdatingTemplateId] = useState<string | null>(null)
 
   // --- EFFECTS ---
   useEffect(() => {
@@ -57,7 +73,6 @@ export default function CampaignDashboard({ campaignId }: Props) {
     setSavingItems({})
   }
 
-  // Función para formatear la fecha de Supabase al formato del input (datetime-local)
   const formatForInput = (dateString: string) => {
     if (!dateString) return ''
     return new Date(dateString).toISOString().slice(0, 16)
@@ -74,7 +89,6 @@ export default function CampaignDashboard({ campaignId }: Props) {
   }
 
   async function fetchTemplates() {
-    // AHORA TAMBIÉN TRAEMOS image_url
     const { data } = await supabase.from('prize_templates').select('*').eq('campaign_id', campaignId).order('created_at', { ascending: true })
     if (data) setTemplates(data)
   }
@@ -102,13 +116,14 @@ export default function CampaignDashboard({ campaignId }: Props) {
       setLocalStock(initialStock)
     }
   }
-// --- ACTIONS: SCHEDULING ---
+
+  // --- ACTIONS: SCHEDULING ---
   const saveSchedule = async () => {
     setIsSavingSchedule(true)
     const { error } = await supabase
       .from('campaigns')
       .update({
-        start_at: startAt || null, // Si está vacío, se guarda NULL (Siempre activo)
+        start_at: startAt || null, 
         end_at: endAt || null
       })
       .eq('id', campaignId)
@@ -119,6 +134,7 @@ export default function CampaignDashboard({ campaignId }: Props) {
         fetchCampaign()
     }
   }
+
   // --- ACTIONS: MASTER TEMPLATES ---
   const addTemplate = async () => {
     if (!newTemplateName || !newTemplateImage) {
@@ -129,10 +145,9 @@ export default function CampaignDashboard({ campaignId }: Props) {
     setIsUploadingTemplate(true)
 
     try {
-        // 1. Subir la imagen al bucket 'prize_images'
         const fileExt = newTemplateImage.name.split('.').pop()
         const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`
-        const filePath = `${campaignId}/${fileName}` // Agrupado por campaña
+        const filePath = `${campaignId}/${fileName}`
 
         const { error: uploadError } = await supabase.storage
             .from('prize_images')
@@ -140,23 +155,20 @@ export default function CampaignDashboard({ campaignId }: Props) {
 
         if (uploadError) throw new Error("Error al subir la imagen.")
 
-        // 2. Obtener la URL pública
         const { data: publicUrlData } = supabase.storage
             .from('prize_images')
             .getPublicUrl(filePath)
 
         const imageUrl = publicUrlData.publicUrl
 
-        // 3. Guardar en la base de datos
         const { error: insertError } = await supabase.from('prize_templates').insert({ 
             name: newTemplateName, 
             campaign_id: campaignId,
-            image_url: imageUrl // GUARDAMOS LA URL AQUÍ
+            image_url: imageUrl 
         })
 
         if (insertError) throw insertError
 
-        // 4. Limpiar y recargar
         setNewTemplateName('')
         setNewTemplateImage(null)
         fetchTemplates()
@@ -166,6 +178,59 @@ export default function CampaignDashboard({ campaignId }: Props) {
         alert("Ocurrió un error al guardar el premio.")
     } finally {
         setIsUploadingTemplate(false)
+    }
+  }
+
+  // NUEVA FUNCIÓN: Actualizar Imagen en Cascada (Template -> Prizes)
+  const updateTemplateImage = async (templateId: string, templateName: string, file: File) => {
+    setUpdatingTemplateId(templateId)
+    try {
+      // 1. Subir la nueva imagen
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`
+      const filePath = `${campaignId}/${fileName}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('prize_images')
+        .upload(filePath, file)
+
+      if (uploadError) throw new Error("Error al subir la nueva imagen.")
+
+      // 2. Obtener nueva URL
+      const { data: publicUrlData } = supabase.storage
+        .from('prize_images')
+        .getPublicUrl(filePath)
+
+      const newImageUrl = publicUrlData.publicUrl
+
+      // 3. Actualizar la tabla 'prize_templates' (El Maestro)
+      const { error: updateTmplError } = await supabase
+        .from('prize_templates')
+        .update({ image_url: newImageUrl })
+        .eq('id', templateId)
+
+      if (updateTmplError) throw updateTmplError
+
+      // 4. ACTUALIZACIÓN EN CASCADA: Actualizar todos los 'prizes' que compartan este nombre en esta campaña
+      const { error: updatePrizesError } = await supabase
+        .from('prizes')
+        .update({ image_url: newImageUrl })
+        .eq('campaign_id', campaignId)
+        .eq('name', templateName)
+
+      if (updatePrizesError) throw updatePrizesError
+
+      alert(`Imagen de "${templateName}" actualizada en la base y en todas las tiendas exitosamente.`)
+      
+      // 5. Refrescar vistas
+      fetchTemplates()
+      if (selectedStore) fetchPrizes(selectedStore)
+
+    } catch (error: any) {
+      console.error(error)
+      alert(error.message || "Ocurrió un error al actualizar la imagen.")
+    } finally {
+      setUpdatingTemplateId(null)
     }
   }
 
@@ -210,7 +275,6 @@ export default function CampaignDashboard({ campaignId }: Props) {
   }
 
   // --- ACTIONS: STOCK MANAGEMENT ---
-  
   const handleLocalStockChange = (templateName: string, val: string) => {
     setLocalStock(prev => ({ ...prev, [templateName]: val }))
   }
@@ -223,7 +287,6 @@ export default function CampaignDashboard({ campaignId }: Props) {
     const valStr = localStock[templateName]
     const stockVal = valStr && valStr !== '' ? parseInt(valStr) : 0
 
-    // Buscamos la plantilla original para copiar su URL de imagen
     const templateRef = templates.find(t => t.name === templateName)
 
     const { data, error } = await supabase
@@ -234,7 +297,7 @@ export default function CampaignDashboard({ campaignId }: Props) {
             name: templateName,
             stock: stockVal,
             is_active: true,
-            image_url: templateRef?.image_url // <--- COPIAMOS LA IMAGEN DE LA PLANTILLA AL PREMIO DE LA TIENDA
+            image_url: templateRef?.image_url 
         }, { onConflict: 'store_id, name' })
         .select()
         .single()
@@ -260,39 +323,35 @@ export default function CampaignDashboard({ campaignId }: Props) {
   return (
     <div className="flex flex-col gap-8 h-full pb-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
       
-      {/* 1. CONFIGURACIÓN SUPERIOR: LINK & PROGRAMACIÓN ELEGANTE */}
+      {/* 1. CONFIGURACIÓN SUPERIOR */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
-        {/* PANEL: Link Maestro (Col 4) */}
+        {/* PANEL: Link Maestro */}
         <div className="lg:col-span-4 bg-amber-50 dark:bg-amber-900/10 p-8 rounded-[3rem] border border-amber-100 dark:border-amber-800 flex flex-col justify-between relative overflow-hidden group">
-    <div className="absolute -top-10 -right-10 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl group-hover:bg-amber-500/20 transition-all"></div>
-    <div>
-      <div className="flex items-center gap-3 mb-4 text-amber-700 dark:text-amber-300 font-black uppercase tracking-tighter text-xl">
-        <div className="bg-amber-500 text-white p-2 rounded-2xl shadow-lg shadow-amber-500/30">
-          <Plus size={20}/>
+          <div className="absolute -top-10 -right-10 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl group-hover:bg-amber-500/20 transition-all"></div>
+          <div>
+            <div className="flex items-center gap-3 mb-4 text-amber-700 dark:text-amber-300 font-black uppercase tracking-tighter text-xl">
+              <div className="bg-amber-500 text-white p-2 rounded-2xl shadow-lg shadow-amber-500/30">
+                <Plus size={20}/>
+              </div>
+              Link de Gestión
+            </div>
+            <p className="text-xs text-amber-600/80 dark:text-amber-400 mb-6 font-semibold leading-relaxed">
+                Comparte este link con el cliente para que pueda **gestionar el stock** de sus tiendas sin entrar al panel administrativo.
+            </p>
+            <div className="bg-white/80 dark:bg-black/40 backdrop-blur-md p-4 rounded-3xl border border-amber-200/50 dark:border-amber-900/50 break-all text-[11px] font-mono mb-6 text-amber-900 dark:text-amber-100 shadow-inner">
+                {typeof window !== 'undefined' ? `${window.location.origin}/share/${campaign?.share_uuid}` : 'Cargando...'}
+            </div>
+          </div>
+          <button 
+            onClick={copyClientLink}
+            className="flex items-center justify-center gap-3 bg-amber-500 hover:bg-amber-600 text-white px-6 py-4 rounded-2xl text-sm font-black transition-all active:scale-95 shadow-xl shadow-amber-600/20 uppercase tracking-tighter"
+          >
+            <Copy size={18}/> Copiar Link de Socio
+          </button>
         </div>
-        Link de Gestión
-      </div>
-      <p className="text-xs text-amber-600/80 dark:text-amber-400 mb-6 font-semibold leading-relaxed">
-          Comparte este link con el cliente para que pueda **gestionar el stock** de sus tiendas sin entrar al panel administrativo.
-      </p>
-      <div className="bg-white/80 dark:bg-black/40 backdrop-blur-md p-4 rounded-3xl border border-amber-200/50 dark:border-amber-900/50 break-all text-[11px] font-mono mb-6 text-amber-900 dark:text-amber-100 shadow-inner">
-          {typeof window !== 'undefined' ? `${window.location.origin}/share/${campaign?.share_uuid}` : 'Cargando...'}
-      </div>
-    </div>
-    <button 
-      onClick={() => {
-          const shareUrl = `${window.location.origin}/share/${campaign?.share_uuid}`;
-          navigator.clipboard.writeText(shareUrl)
-          alert("Link de gestión copiado: " + shareUrl)
-      }}
-      className="flex items-center justify-center gap-3 bg-amber-500 hover:bg-amber-600 text-white px-6 py-4 rounded-2xl text-sm font-black transition-all active:scale-95 shadow-xl shadow-amber-600/20 uppercase tracking-tighter"
-    >
-      <Copy size={18}/> Copiar Link de Socio
-    </button>
-  </div>
 
-        {/* PANEL: Programación de Horarios Apple Style (Col 8) */}
+        {/* PANEL: Programación de Horarios */}
         <div className="lg:col-span-8 bg-white dark:bg-zinc-900 p-8 rounded-[3rem] border border-zinc-100 dark:border-zinc-800 shadow-sm flex flex-col">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
             <div>
@@ -312,10 +371,7 @@ export default function CampaignDashboard({ campaignId }: Props) {
             </button>
           </div>
 
-          {/* Grid de Selectores Separados visualmente */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-             
-             {/* Bloque INICIO */}
              <div className="relative group">
                 <div className="absolute -left-3 top-0 bottom-0 w-1 bg-purple-500 rounded-full opacity-20 group-focus-within:opacity-100 transition-opacity"></div>
                 <label className="text-[11px] font-black uppercase text-zinc-400 ml-2 mb-3 block tracking-[0.2em]">Apertura de Campaña</label>
@@ -330,7 +386,6 @@ export default function CampaignDashboard({ campaignId }: Props) {
                 <p className="text-[9px] text-zinc-400 mt-3 ml-4 font-bold uppercase tracking-widest">Formato: Día / Mes / Año — Hora</p>
              </div>
 
-             {/* Bloque CIERRE */}
              <div className="relative group">
                 <div className="absolute -left-3 top-0 bottom-0 w-1 bg-red-500 rounded-full opacity-20 group-focus-within:opacity-100 transition-opacity"></div>
                 <label className="text-[11px] font-black uppercase text-zinc-400 ml-2 mb-3 block tracking-[0.2em]">Cierre de Campaña</label>
@@ -347,10 +402,8 @@ export default function CampaignDashboard({ campaignId }: Props) {
                   <button onClick={() => setEndAt('')} className="text-[9px] text-red-500 font-black uppercase tracking-widest hover:underline">Limpiar</button>
                 </div>
              </div>
-
           </div>
         </div>
-
       </div>
 
       <div className="px-4">
@@ -395,12 +448,32 @@ export default function CampaignDashboard({ campaignId }: Props) {
                   {templates.map(t => (
                       <div key={t.id} className="flex items-center justify-between bg-zinc-50 dark:bg-zinc-800/30 px-4 py-3 rounded-2xl border border-zinc-100 dark:border-zinc-700/50 group">
                           <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 rounded-xl overflow-hidden shadow-sm border border-white dark:border-zinc-800">
+                              <div className="w-10 h-10 rounded-xl overflow-hidden shadow-sm border border-white dark:border-zinc-800 relative">
                                 {t.image_url ? <img src={t.image_url} className="w-full h-full object-cover bg-white" alt=""/> : <div className="w-full h-full flex items-center justify-center bg-zinc-200"><Gift size={16}/></div>}
                               </div>
-                              <span className="text-sm font-black tracking-tight text-zinc-700 dark:text-zinc-300 truncate max-w-[140px] uppercase">{t.name}</span>
+                              <span className="text-sm font-black tracking-tight text-zinc-700 dark:text-zinc-300 truncate max-w-[120px] uppercase" title={t.name}>{t.name}</span>
                           </div>
-                          <button onClick={() => deleteTemplate(t.id)} className="text-zinc-300 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"><Trash2 size={16}/></button>
+                          
+                          {/* BOTONERA DE ACCIÓN: Actualizar Imagen / Eliminar */}
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                              <label title="Actualizar Imagen para todas las tiendas" className={`cursor-pointer p-2 rounded-lg transition-all ${updatingTemplateId === t.id ? 'text-blue-500 animate-pulse' : 'text-zinc-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20'}`}>
+                                  {updatingTemplateId === t.id ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={16} />}
+                                  <input 
+                                      type="file" 
+                                      accept="image/*" 
+                                      className="hidden" 
+                                      disabled={updatingTemplateId === t.id}
+                                      onChange={(e) => {
+                                        if (e.target.files && e.target.files[0]) {
+                                          updateTemplateImage(t.id, t.name, e.target.files[0])
+                                        }
+                                      }} 
+                                  />
+                              </label>
+                              <button title="Eliminar Premio" onClick={() => deleteTemplate(t.id)} className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all">
+                                <Trash2 size={16}/>
+                              </button>
+                          </div>
                       </div>
                   ))}
               </div>
@@ -434,7 +507,7 @@ export default function CampaignDashboard({ campaignId }: Props) {
           </div>
         </div>
 
-        {/* COLUMNA DERECHA: Gestión de Stock Apple Style */}
+        {/* COLUMNA DERECHA: Gestión de Stock */}
         <div className="lg:col-span-8 bg-white dark:bg-zinc-900 p-10 rounded-[4rem] border border-zinc-100 dark:border-zinc-800 shadow-sm flex flex-col h-full overflow-hidden relative">
             {selectedStore ? (
                 <>
