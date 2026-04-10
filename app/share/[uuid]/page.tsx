@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useParams } from 'next/navigation'
 import { Loader2, Store, CheckCircle2 } from 'lucide-react'
 import * as XLSX from 'xlsx'
-import { motion, AnimatePresence } from 'framer-motion' // NUEVO: Importamos Framer Motion para el Toast
+import { motion, AnimatePresence } from 'framer-motion'
 
 // Componentes Segmentados
 import CampaignHeader from '@/app/admin/components/CampaignHeader' 
@@ -19,7 +19,7 @@ export default function ClientSharedPage() {
   const shareUuid = params.uuid as string
 
   // --- ESTADOS GLOBALES ---
-  const [initialLoad, setInitialLoad] = useState(true) // CAMBIADO: De `loading` a `initialLoad` para distinguir la primera carga
+  const [initialLoad, setInitialLoad] = useState(true) 
   const [error, setError] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [campaign, setCampaign] = useState<any>(null)
@@ -34,13 +34,22 @@ export default function ClientSharedPage() {
   const [isSavingAll, setIsSavingAll] = useState(false)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
 
-  // NUEVO: Estado para el Toast flotante
   const [toastMessage, setToastMessage] = useState<{ text: string, type: 'loading' | 'success' } | null>(null)
+
+  // NUEVO: Detector de Móvil ligero
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    // Detectamos si es móvil al cargar para pasar esta info a los componentes hijos
+    const checkMobile = () => setIsMobile(window.innerWidth < 768)
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   useEffect(() => { if (shareUuid) initPage() }, [shareUuid])
   useEffect(() => { if (selectedStore) fetchPrizes(selectedStore) }, [selectedStore])
 
-  // Carga inicial completa (Muestra pantalla blanca)
   async function initPage() {
     setInitialLoad(true)
     const { data: campData, error } = await supabase.from('campaigns').select('*').eq('share_uuid', shareUuid).single()
@@ -55,7 +64,6 @@ export default function ClientSharedPage() {
     setInitialLoad(false)
   }
 
-  // NUEVO: Función para recargar silenciosamente usando Toast
   async function refreshStoresBackground(actionText: string) {
     if (!campaign) return
 
@@ -108,7 +116,6 @@ export default function ClientSharedPage() {
       console.error("Error guardando el stock:", error)
       alert("Hubo un error al guardar el inventario. Revisa la consola.")
     } else {
-      // NUEVO: Añadido feedback al guardar inventario
       setToastMessage({ text: 'Inventario guardado', type: 'success' })
       setTimeout(() => setToastMessage(null), 2500)
     }
@@ -136,13 +143,11 @@ export default function ClientSharedPage() {
     setIsExporting(false)
   }
 
-  // La pantalla de carga blanca (Flashbang) AHORA SOLO aparece la primera vez que entras a la URL
   if (initialLoad) return <div className="min-h-screen bg-[#F5F5F7] dark:bg-black flex items-center justify-center"><Loader2 className="animate-spin text-zinc-400" size={32} /></div>
 
   return (
     <div className="min-h-screen bg-[#F5F5F7] dark:bg-black text-zinc-900 dark:text-zinc-100 p-4 sm:p-8 font-sans w-full relative">
       
-      {/* NUEVO: TOAST FLOTANTE */}
       <AnimatePresence>
         {toastMessage && (
           <motion.div 
@@ -163,7 +168,6 @@ export default function ClientSharedPage() {
         )}
       </AnimatePresence>
 
-      {/* Contenedor principal ahora usa w-full en lugar de max-w-7xl */}
       <div className="w-full space-y-8">
         
         <CampaignHeader 
@@ -181,20 +185,20 @@ export default function ClientSharedPage() {
               onSelect={(id: string) => { setSelectedStore(id); setActiveView('stock') }}
               campaignId={campaign?.id}
               campaignUrl={campaign?.campaign_url}
-              // CAMBIO CLAVE AQUÍ: En lugar de initPage, usamos refreshStoresBackground
               refreshStores={(actionText: string) => refreshStoresBackground(actionText)}
+              isMobile={isMobile} // <- PASAMOS ESTA VARIABLE AL SIDEBAR
             />
           </aside>
 
           <main className="lg:col-span-8 xl:col-span-9 flex flex-col gap-6">
             {selectedStore ? (
               <>
-                <div className="flex justify-between items-center bg-zinc-200/50 dark:bg-zinc-800/50 p-1.5 rounded-2xl w-fit self-end shadow-inner">
+                <div className="flex justify-between items-center bg-white dark:bg-zinc-800 md:bg-zinc-200/50 md:dark:bg-zinc-800/50 p-1.5 rounded-2xl w-full sm:w-fit self-end shadow-sm md:shadow-inner overflow-x-auto custom-scrollbar">
                    {['stock', 'registrations', 'stats'].map((v) => (
                      <button 
                         key={v}
                         onClick={() => setActiveView(v as any)}
-                        className={`px-6 py-2 rounded-xl text-xs font-bold capitalize transition-all ${activeView === v ? 'bg-white dark:bg-zinc-700 shadow-sm text-black dark:text-white' : 'text-zinc-500'}`}
+                        className={`flex-1 sm:flex-none px-6 py-2.5 sm:py-2 rounded-xl text-xs font-bold capitalize transition-all whitespace-nowrap ${activeView === v ? 'bg-zinc-100 dark:bg-zinc-700 shadow-sm text-black dark:text-white' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
                      >
                        {v === 'stock' ? 'Inventario' : v === 'registrations' ? 'Registros' : 'Análisis'}
                      </button>
@@ -216,9 +220,10 @@ export default function ClientSharedPage() {
                 {activeView === 'stats' && <StatsView campaignId={campaign.id} />}
               </>
             ) : (
-              <div className="h-[500px] flex flex-col items-center justify-center bg-white/40 dark:bg-zinc-900/20 backdrop-blur-xl rounded-[3rem] border-2 border-dashed border-white dark:border-zinc-800/50">
+              // OPTIMIZADO PARA MÓVIL: bg sólido en móvil, cristal en desktop
+              <div className="h-[500px] flex flex-col items-center justify-center bg-white dark:bg-zinc-900 md:bg-white/40 md:dark:bg-zinc-900/20 md:backdrop-blur-xl rounded-[3rem] border-2 border-dashed border-zinc-200 dark:border-zinc-800/50 shadow-sm md:shadow-none">
                 <Store size={48} className="text-blue-500 mb-4 opacity-20"/>
-                <p className="text-xl font-bold text-zinc-400">Selecciona una tienda para gestionar</p>
+                <p className="text-xl font-bold text-zinc-400 text-center px-4">Selecciona una tienda para gestionar</p>
               </div>
             )}
           </main>

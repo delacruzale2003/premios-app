@@ -1,10 +1,10 @@
 'use client'
 
-import { Plus, Store, Link as LinkIcon, Check, Trash2, Download, ArrowDownAZ, Clock, Package, Search, AlertTriangle } from 'lucide-react'
+import { Plus, Store, Link as LinkIcon, Check, Trash2, Download, ArrowDownAZ, Clock, Package, Search, AlertTriangle, ChevronDown } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { QRCodeCanvas } from 'qrcode.react'
-import { motion, AnimatePresence, Variants } from 'framer-motion' 
+import { motion, AnimatePresence, Variants } from 'framer-motion'
 
 // Configuraciones de animación
 const listVariants: Variants = {
@@ -20,7 +20,10 @@ const itemVariants: Variants = {
   show: { opacity: 1, y: 0, scale: 1, transition: { type: "spring" as const, stiffness: 300, damping: 24 } }
 }
 
-export default function StoresSidebar({ stores, selectedStore, onSelect, campaignId, campaignUrl, refreshStores }: any) {
+// NUEVO: Cantidad de tiendas a cargar por bloque
+const ITEMS_PER_PAGE = 15
+
+export default function StoresSidebar({ stores, selectedStore, onSelect, campaignId, campaignUrl, refreshStores, isMobile }: any) {
   const [newStoreName, setNewStoreName] = useState('')
   const [copiedId, setCopiedId] = useState<string | null>(null)
   
@@ -29,6 +32,9 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
   const [searchTerm, setSearchTerm] = useState('')
 
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  
+  // NUEVO: Estado para controlar cuántas tiendas mostramos
+  const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE)
 
   useEffect(() => {
     const fetchAllStocks = async () => {
@@ -53,6 +59,11 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
     fetchAllStocks()
   }, [campaignId, stores]) 
 
+  // NUEVO: Reseteamos la cantidad visible si el usuario busca algo
+  useEffect(() => {
+    setVisibleCount(ITEMS_PER_PAGE)
+  }, [searchTerm, sortBy])
+
   const addStore = async () => {
     const cleanStoreName = newStoreName.trim() 
     if (!cleanStoreName || !campaignId) return
@@ -61,6 +72,7 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
     if (!error) {
       setNewStoreName('')
       refreshStores('Creando tienda...')
+      setVisibleCount(ITEMS_PER_PAGE) // Volvemos a la primera página para que vea su tienda nueva
     }
   }
 
@@ -105,6 +117,7 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
     }
   }
 
+  // Filtrado y Ordenado (Se hace en memoria completo)
   const filteredAndSortedStores = [...stores]
     .filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()))
     .sort((a, b) => {
@@ -115,17 +128,22 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
       }
     })
 
+  // NUEVO: Cortamos el array resultante para mostrar solo las permitidas
+  const visibleStores = filteredAndSortedStores.slice(0, visibleCount)
+  const hasMore = visibleStores.length < filteredAndSortedStores.length
+
   return (
-    <div className="flex flex-col h-[500px] lg:h-[700px] bg-zinc-100/50 dark:bg-zinc-900/30 backdrop-blur-xl rounded-[2.5rem] border border-white dark:border-zinc-800/50 p-4 shadow-inner overflow-hidden">
+    // OPTIMIZACIÓN: Quitamos backdrop-blur en móviles usando prefijos md:
+    <div className="flex flex-col h-[500px] lg:h-[700px] bg-white dark:bg-zinc-900 md:bg-zinc-100/50 md:dark:bg-zinc-900/30 md:backdrop-blur-xl rounded-[2.5rem] border border-zinc-200 md:border-white dark:border-zinc-800 md:dark:border-zinc-800/50 p-4 shadow-sm md:shadow-inner overflow-hidden transition-all">
       
       <div className="px-3 pt-3 pb-4 flex items-center gap-2 font-bold text-xl tracking-tight">
         <Store className="text-blue-500" size={22}/> Puntos de Entrega
-        <span className="text-xs bg-zinc-200 dark:bg-zinc-800 text-zinc-500 px-2 py-1 rounded-full ml-auto">
+        <span className="text-xs bg-zinc-100 dark:bg-zinc-800 text-zinc-500 px-2 py-1 rounded-full ml-auto">
           {stores.length}
         </span>
       </div>
       
-      <div className="bg-white dark:bg-zinc-800 p-2.5 rounded-[1.5rem] shadow-md border border-zinc-200 dark:border-zinc-700 mb-5 flex gap-2">
+      <div className="bg-zinc-50 md:bg-white dark:bg-zinc-950 md:dark:bg-zinc-800 p-2.5 rounded-[1.5rem] shadow-sm md:shadow-md border border-zinc-200 dark:border-zinc-800 md:dark:border-zinc-700 mb-5 flex gap-2">
         <input 
           className="flex-1 bg-transparent px-3 py-2 text-sm outline-none font-bold text-black dark:text-white placeholder:font-normal placeholder:text-zinc-400"
           placeholder="Crear nueva tienda..."
@@ -144,7 +162,7 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
         </div>
         <input 
           type="text"
-          className="w-full bg-zinc-200/50 dark:bg-zinc-900 border border-zinc-300/50 dark:border-zinc-800 rounded-2xl pl-10 pr-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-medium text-zinc-700 dark:text-zinc-300 placeholder:text-zinc-400"
+          className="w-full bg-zinc-100 md:bg-zinc-200/50 dark:bg-zinc-950 md:dark:bg-zinc-900 border border-zinc-200 md:border-zinc-300/50 dark:border-zinc-800 rounded-2xl pl-10 pr-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-medium text-zinc-700 dark:text-zinc-300 placeholder:text-zinc-400"
           placeholder="Buscar tienda en la lista..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
@@ -154,13 +172,13 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
       <div className="flex gap-2 px-1 mb-4">
         <button 
           onClick={() => setSortBy('date')} 
-          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold transition-all border ${sortBy === 'date' ? 'bg-white dark:bg-zinc-800 shadow-sm text-blue-600 dark:text-blue-400 border-zinc-200 dark:border-zinc-700' : 'bg-transparent text-zinc-500 border-transparent hover:bg-white/50 dark:hover:bg-zinc-800/50'}`}
+          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold transition-all border ${sortBy === 'date' ? 'bg-white dark:bg-zinc-800 shadow-sm text-blue-600 dark:text-blue-400 border-zinc-200 dark:border-zinc-700' : 'bg-transparent text-zinc-500 border-transparent hover:bg-zinc-200 md:hover:bg-white/50 dark:hover:bg-zinc-800 md:dark:hover:bg-zinc-800/50'}`}
         >
           <Clock size={14}/> Recientes
         </button>
         <button 
           onClick={() => setSortBy('alpha')} 
-          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold transition-all border ${sortBy === 'alpha' ? 'bg-white dark:bg-zinc-800 shadow-sm text-blue-600 dark:text-blue-400 border-zinc-200 dark:border-zinc-700' : 'bg-transparent text-zinc-500 border-transparent hover:bg-white/50 dark:hover:bg-zinc-800/50'}`}
+          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold transition-all border ${sortBy === 'alpha' ? 'bg-white dark:bg-zinc-800 shadow-sm text-blue-600 dark:text-blue-400 border-zinc-200 dark:border-zinc-700' : 'bg-transparent text-zinc-500 border-transparent hover:bg-zinc-200 md:hover:bg-white/50 dark:hover:bg-zinc-800 md:dark:hover:bg-zinc-800/50'}`}
         >
           <ArrowDownAZ size={14}/> A - Z
         </button>
@@ -170,7 +188,7 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
         variants={listVariants}
         initial="hidden"
         animate="show"
-        className="flex-1 overflow-y-auto px-1 space-y-2.5 custom-scrollbar"
+        className="flex-1 overflow-y-auto px-1 space-y-2.5 custom-scrollbar pb-6"
       >
         <AnimatePresence mode="popLayout">
           {filteredAndSortedStores.length === 0 ? (
@@ -178,20 +196,22 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
               No se encontraron tiendas.
             </motion.div>
           ) : (
-            filteredAndSortedStores.map((s: any) => {
+            // NUEVO: Renderizamos solo la rebanada 'visibleStores'
+            visibleStores.map((s: any) => {
               const totalPrizes = storeStocks[s.id] || 0 
               const isDeleting = deletingId === s.id
 
               return (
                 <motion.div 
                   variants={itemVariants}
-                  layout 
+                  // OPTIMIZACIÓN: Si es móvil, quitamos el 'layout' animation pesado
+                  layout={!isMobile} 
                   key={s.id} 
                   onClick={() => onSelect(s.id)}
                   className={`group relative p-4 rounded-[1.5rem] cursor-pointer flex justify-between items-center transition-colors duration-300 border
                     ${selectedStore === s.id 
-                      ? 'bg-white dark:bg-zinc-800 border-zinc-200/50 dark:border-zinc-700 shadow-xl' 
-                      : 'bg-transparent border-transparent hover:bg-white/40 dark:hover:bg-zinc-800/20'
+                      ? 'bg-zinc-100 md:bg-white dark:bg-zinc-800 border-zinc-200 md:border-zinc-200/50 dark:border-zinc-700 shadow-sm md:shadow-xl' 
+                      : 'bg-transparent border-transparent hover:bg-zinc-50 md:hover:bg-white/40 dark:hover:bg-zinc-800/50 md:dark:hover:bg-zinc-800/20'
                     }`}
                 >
                   <div className="flex flex-col gap-1 pr-4 truncate">
@@ -202,7 +222,7 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
                     <div className="flex items-center gap-1.5 text-xs">
                       <Package size={12} className={totalPrizes > 0 ? "text-blue-500" : "text-zinc-400"} />
                       <span className={`font-bold ${totalPrizes > 0 ? "text-blue-600 dark:text-blue-400" : "text-zinc-400"}`}>
-                        {totalPrizes} PREMIOS
+                        {totalPrizes} premios
                       </span>
                     </div>
                   </div>
@@ -254,7 +274,6 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
                     <div className="hidden">
                       <QRCodeCanvas 
                         id={`qr-${s.id}`} 
-                        // CAMBIO CLAVE AQUÍ: Le inyectamos el https:// directamente al QR
                         value={`https://${getStoreLink(s.id)}`} 
                         size={1024} 
                         level={"M"}  
@@ -269,6 +288,23 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
             })
           )}
         </AnimatePresence>
+
+        {/* NUEVO: Botón de "Ver más" que solo aparece si hay más tiendas */}
+        {hasMore && (
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            className="flex justify-center mt-4 pb-2"
+          >
+            <button 
+              onClick={() => setVisibleCount(prev => prev + ITEMS_PER_PAGE)}
+              className="flex items-center gap-2 px-5 py-2.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 text-xs font-bold rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all border border-zinc-200 dark:border-zinc-700 shadow-sm"
+            >
+              Ver más tiendas <ChevronDown size={14} />
+            </button>
+          </motion.div>
+        )}
+        
       </motion.div>
     </div>
   )
