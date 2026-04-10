@@ -1,5 +1,6 @@
 import { Image as ImageIcon, Save, Loader2, Package } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { useState, useEffect } from 'react'
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -16,10 +17,30 @@ const itemVariants = {
 
 export default function InventoryGrid({ templates, prizes, localStock, onChange, onSave, isSaving, hasChanges }: any) {
   
+  // NUEVO: Detector de móvil
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768)
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
   const totalStock = Object.values(localStock).reduce((acc, currentVal) => {
     const num = parseInt(currentVal as string) || 0;
     return (acc as number) + num;
   }, 0)
+
+  // NUEVO: Función para comprimir la imagen usando la API de Supabase
+  const getThumbnailUrl = (fullUrl: string) => {
+    if (!fullUrl) return ''
+    if (fullUrl.includes('/storage/v1/object/public/')) {
+      // 200x200px es más que suficiente para estos cuadrados
+      return fullUrl.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + '?width=200&height=200&resize=contain'
+    }
+    return fullUrl
+  }
 
   return (
     <div className="relative flex-1 flex flex-col">
@@ -42,9 +63,10 @@ export default function InventoryGrid({ templates, prizes, localStock, onChange,
         </div>
       </div>
 
-      {/* GRILLA COMPACTA ANIMADA (4 columnas en pantallas grandes) */}
+      {/* GRILLA COMPACTA */}
       <motion.div 
-        variants={containerVariants}
+        // OPTIMIZACIÓN: Si es móvil, apagamos la animación de cascada (stagger) para cargar al instante
+        variants={isMobile ? {} : containerVariants}
         initial="hidden"
         animate="show"
         className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4 overflow-y-auto pb-24 custom-scrollbar px-1"
@@ -52,20 +74,26 @@ export default function InventoryGrid({ templates, prizes, localStock, onChange,
         {templates.map((template: any) => {
           const val = localStock[template.name] ?? ''
           
+          // OPTIMIZACIÓN: Intercambiamos entre motion.div y un div normal según el dispositivo
+          const CardComponent: any = isMobile ? 'div' : motion.div;
+          const cardProps = isMobile ? {} : { variants: itemVariants };
+
           return (
-            <motion.div 
-              variants={itemVariants}
+            <CardComponent 
+              {...cardProps}
               key={template.id} 
-              className="relative flex flex-col bg-white dark:bg-zinc-900 rounded-[1.5rem] border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 group"
+              className="relative flex flex-col bg-white dark:bg-zinc-900 rounded-[1.5rem] border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden transition-all duration-300 md:hover:shadow-lg md:hover:-translate-y-1 group"
             >
               
-              {/* IMAGE PREVIEW: Ahora es CUADRADA y recorta al centro (object-cover) */}
+              {/* IMAGE PREVIEW */}
               <div className="aspect-square w-full bg-zinc-100 dark:bg-zinc-950 flex items-center justify-center relative overflow-hidden border-b border-zinc-200 dark:border-zinc-800">
                 {template.image_url ? (
                   <img 
-                    src={template.image_url} 
+                    // OPTIMIZACIÓN: Usamos el thumbnail y lazy loading
+                    src={getThumbnailUrl(template.image_url)} 
                     alt={template.name} 
-                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
+                    loading="lazy"
+                    className="w-full h-full object-cover transition-transform duration-700 md:group-hover:scale-110" 
                   />
                 ) : (
                   <div className="text-zinc-300 dark:text-zinc-700 flex flex-col items-center gap-1 opacity-50">
@@ -87,7 +115,6 @@ export default function InventoryGrid({ templates, prizes, localStock, onChange,
                   <input 
                     type="number" 
                     min="0" 
-                    // CLASE CLAVE: [&::-webkit-inner-spin-button]:appearance-none oculta las flechitas
                     className="w-full bg-transparent font-black text-base text-black dark:text-white outline-none text-right [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                     value={val}
                     placeholder="0"
@@ -95,12 +122,12 @@ export default function InventoryGrid({ templates, prizes, localStock, onChange,
                   />
                 </div>
               </div>
-            </motion.div>
+            </CardComponent>
           )
         })}
       </motion.div>
 
-      {/* FLOATING SAVE BUTTON (Más pequeño) */}
+      {/* FLOATING SAVE BUTTON */}
       {hasChanges && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-10 fade-in duration-500">
           <button 

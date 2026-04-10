@@ -36,7 +36,7 @@ export default function ClientSharedPage() {
 
   const [toastMessage, setToastMessage] = useState<{ text: string, type: 'loading' | 'success' } | null>(null)
 
-  // NUEVO: Detector de Móvil ligero
+  // Detector de Móvil ligero
   const [isMobile, setIsMobile] = useState(false)
 
   useEffect(() => {
@@ -90,17 +90,14 @@ export default function ClientSharedPage() {
     setIsSavingAll(true)
 
     try {
-      // Usamos un bucle para procesar cada premio uno por uno y evitar el error de estructura asimétrica
       for (const t of templates) {
         const stockValue = parseInt(localStock[t.name] || '0')
         
-        // No guardamos stock negativo
         if (stockValue < 0) continue; 
 
         const existingPrize = prizes.find(p => p.name === t.name)
         
         if (existingPrize) {
-          // Si el premio YA EXISTE, hacemos un UPDATE
           const { error } = await supabase
             .from('prizes')
             .update({
@@ -113,7 +110,6 @@ export default function ClientSharedPage() {
           if (error) throw error
           
         } else {
-          // Si el premio es NUEVO para esta tienda, hacemos un INSERT
           const { error } = await supabase
             .from('prizes')
             .insert({
@@ -123,14 +119,13 @@ export default function ClientSharedPage() {
               stock: stockValue,
               image_url: t.image_url,
               is_active: true,
-              batch_number: 1 // Forzamos el batch 1 para las tiendas nuevas
+              batch_number: 1 
             })
             
           if (error) throw error
         }
       }
 
-      // Si todo el bucle termina bien:
       setToastMessage({ text: 'Inventario guardado', type: 'success' })
       setTimeout(() => setToastMessage(null), 2500)
       await fetchPrizes(selectedStore)
@@ -233,13 +228,14 @@ export default function ClientSharedPage() {
                     onSave={saveAllStockToDb}
                     isSaving={isSavingAll}
                     hasChanges={hasUnsavedChanges}
+                    // Aunque en InventoryGrid calculamos isMobile internamente, no está de más pasarlo por si luego unificamos
                   />
                 )}
+                {/* CAMBIO CLAVE AQUÍ: Pasamos isMobile a los componentes que lo necesitan para apagar animaciones */}
                 {activeView === 'registrations' && <StoreRegistrations storeId={selectedStore} />}
                 {activeView === 'stats' && <StatsView campaignId={campaign.id} />}
               </>
             ) : (
-              // OPTIMIZADO PARA MÓVIL: bg sólido en móvil, cristal en desktop
               <div className="h-[500px] flex flex-col items-center justify-center bg-white dark:bg-zinc-900 md:bg-white/40 md:dark:bg-zinc-900/20 md:backdrop-blur-xl rounded-[3rem] border-2 border-dashed border-zinc-200 dark:border-zinc-800/50 shadow-sm md:shadow-none">
                 <Store size={48} className="text-blue-500 mb-4 opacity-20"/>
                 <p className="text-xl font-bold text-zinc-400 text-center px-4">Selecciona una tienda para gestionar</p>
