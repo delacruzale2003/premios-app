@@ -202,7 +202,7 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
                     <div className="flex items-center gap-1.5 text-xs">
                       <Package size={12} className={totalPrizes > 0 ? "text-blue-500" : "text-zinc-400"} />
                       <span className={`font-bold ${totalPrizes > 0 ? "text-blue-600 dark:text-blue-400" : "text-zinc-400"}`}>
-                        {totalPrizes} premios
+                        {totalPrizes} PREMIOS
                       </span>
                     </div>
                   </div>
