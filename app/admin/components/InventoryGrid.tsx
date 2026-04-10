@@ -17,7 +17,7 @@ const itemVariants = {
 
 export default function InventoryGrid({ templates, prizes, localStock, onChange, onSave, isSaving, hasChanges }: any) {
   
-  // NUEVO: Detector de móvil
+  // Detector de móvil
   const [isMobile, setIsMobile] = useState(false)
 
   useEffect(() => {
@@ -32,20 +32,59 @@ export default function InventoryGrid({ templates, prizes, localStock, onChange,
     return (acc as number) + num;
   }, 0)
 
-  // NUEVO: Función para comprimir la imagen usando la API de Supabase
+  // FUNCIÓN CLAVE: Comprime la imagen del premio desde Supabase
   const getThumbnailUrl = (fullUrl: string) => {
     if (!fullUrl) return ''
     if (fullUrl.includes('/storage/v1/object/public/')) {
-      // 200x200px es más que suficiente para estos cuadrados
+      // 200x200px es súper ligero y perfecto para la grilla
       return fullUrl.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + '?width=200&height=200&resize=contain'
     }
     return fullUrl
   }
 
+  // Abstraemos el interior de la tarjeta para no repetir código
+  const renderCardContent = (template: any, val: string) => (
+    <>
+      <div className="aspect-square w-full bg-zinc-100 dark:bg-zinc-950 flex items-center justify-center relative overflow-hidden border-b border-zinc-200 dark:border-zinc-800">
+        {template.image_url ? (
+          <img 
+            src={getThumbnailUrl(template.image_url)} 
+            alt={template.name} 
+            loading="lazy"
+            className="w-full h-full object-cover transition-transform duration-700 md:group-hover:scale-110" 
+          />
+        ) : (
+          <div className="text-zinc-300 dark:text-zinc-700 flex flex-col items-center gap-1 opacity-50">
+            <ImageIcon size={32} />
+            <span className="text-[8px] font-bold uppercase tracking-widest">Sin imagen</span>
+          </div>
+        )}
+      </div>
+
+      <div className="p-3 flex flex-col gap-2">
+        <h3 className="font-bold text-xs leading-tight line-clamp-2 text-zinc-800 dark:text-zinc-200" title={template.name}>
+          {template.name}
+        </h3>
+        
+        <div className="flex items-center justify-between bg-zinc-100 dark:bg-black rounded-xl border border-zinc-300 dark:border-zinc-700 px-3 py-1.5 transition-all focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 focus-within:bg-white dark:focus-within:bg-zinc-900">
+          <span className="text-[9px] text-zinc-500 font-black uppercase tracking-widest">Stock</span>
+          <input 
+            type="number" 
+            min="0" 
+            className="w-full bg-transparent font-black text-base text-black dark:text-white outline-none text-right [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            value={val}
+            placeholder="0"
+            onChange={(e) => onChange(template.name, e.target.value)}
+          />
+        </div>
+      </div>
+    </>
+  )
+
   return (
     <div className="relative flex-1 flex flex-col">
       
-      {/* PANEL DE TOTAL (Más compacto) */}
+      {/* PANEL DE TOTAL */}
       <div className="mb-4 flex items-center justify-between bg-white dark:bg-zinc-900 p-3 sm:p-4 rounded-[1.5rem] border border-zinc-200 dark:border-zinc-800 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-blue-500/10 rounded-xl">
@@ -63,69 +102,44 @@ export default function InventoryGrid({ templates, prizes, localStock, onChange,
         </div>
       </div>
 
-      {/* GRILLA COMPACTA */}
-      <motion.div 
-        // OPTIMIZACIÓN: Si es móvil, apagamos la animación de cascada (stagger) para cargar al instante
-        variants={isMobile ? {} : containerVariants}
-        initial="hidden"
-        animate="show"
-        className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4 overflow-y-auto pb-24 custom-scrollbar px-1"
-      >
-        {templates.map((template: any) => {
-          const val = localStock[template.name] ?? ''
-          
-          // OPTIMIZACIÓN: Intercambiamos entre motion.div y un div normal según el dispositivo
-          const CardComponent: any = isMobile ? 'div' : motion.div;
-          const cardProps = isMobile ? {} : { variants: itemVariants };
-
-          return (
-            <CardComponent 
-              {...cardProps}
-              key={template.id} 
-              className="relative flex flex-col bg-white dark:bg-zinc-900 rounded-[1.5rem] border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden transition-all duration-300 md:hover:shadow-lg md:hover:-translate-y-1 group"
-            >
-              
-              {/* IMAGE PREVIEW */}
-              <div className="aspect-square w-full bg-zinc-100 dark:bg-zinc-950 flex items-center justify-center relative overflow-hidden border-b border-zinc-200 dark:border-zinc-800">
-                {template.image_url ? (
-                  <img 
-                    // OPTIMIZACIÓN: Usamos el thumbnail y lazy loading
-                    src={getThumbnailUrl(template.image_url)} 
-                    alt={template.name} 
-                    loading="lazy"
-                    className="w-full h-full object-cover transition-transform duration-700 md:group-hover:scale-110" 
-                  />
-                ) : (
-                  <div className="text-zinc-300 dark:text-zinc-700 flex flex-col items-center gap-1 opacity-50">
-                    <ImageIcon size={32} />
-                    <span className="text-[8px] font-bold uppercase tracking-widest">Sin imagen</span>
-                  </div>
-                )}
+      {/* GRILLA DIVIDIDA POR RENDIMIENTO */}
+      {isMobile ? (
+        // VERSIÓN MÓVIL: HTML Nativo, cero Framer Motion, máxima velocidad.
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 overflow-y-auto pb-24 custom-scrollbar px-1">
+          {templates.map((template: any) => {
+            const val = localStock[template.name] ?? ''
+            return (
+              <div 
+                key={template.id} 
+                className="relative flex flex-col bg-white dark:bg-zinc-900 rounded-[1.5rem] border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden"
+              >
+                {renderCardContent(template, val)}
               </div>
-
-              {/* INFO & INPUT (Súper compacto) */}
-              <div className="p-3 flex flex-col gap-2">
-                <h3 className="font-bold text-xs leading-tight line-clamp-2 text-zinc-800 dark:text-zinc-200" title={template.name}>
-                  {template.name}
-                </h3>
-                
-                {/* INPUT MEJORADO */}
-                <div className="flex items-center justify-between bg-zinc-100 dark:bg-black rounded-xl border border-zinc-300 dark:border-zinc-700 px-3 py-1.5 transition-all focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 focus-within:bg-white dark:focus-within:bg-zinc-900">
-                  <span className="text-[9px] text-zinc-500 font-black uppercase tracking-widest">Stock</span>
-                  <input 
-                    type="number" 
-                    min="0" 
-                    className="w-full bg-transparent font-black text-base text-black dark:text-white outline-none text-right [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                    value={val}
-                    placeholder="0"
-                    onChange={(e) => onChange(template.name, e.target.value)}
-                  />
-                </div>
-              </div>
-            </CardComponent>
-          )
-        })}
-      </motion.div>
+            )
+          })}
+        </div>
+      ) : (
+        // VERSIÓN DESKTOP: Animada y elegante
+        <motion.div 
+          variants={containerVariants}
+          initial="hidden"
+          animate="show"
+          className="grid lg:grid-cols-4 xl:grid-cols-5 gap-4 overflow-y-auto pb-24 custom-scrollbar px-1"
+        >
+          {templates.map((template: any) => {
+            const val = localStock[template.name] ?? ''
+            return (
+              <motion.div 
+                variants={itemVariants}
+                key={template.id} 
+                className="relative flex flex-col bg-white dark:bg-zinc-900 rounded-[1.5rem] border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 group"
+              >
+                {renderCardContent(template, val)}
+              </motion.div>
+            )
+          })}
+        </motion.div>
+      )}
 
       {/* FLOATING SAVE BUTTON */}
       {hasChanges && (
