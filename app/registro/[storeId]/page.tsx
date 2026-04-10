@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Upload, CheckCircle2, AlertCircle, Loader2, MapPin, Gift, Camera } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion' // NUEVO: Importamos Framer Motion
+import { motion, AnimatePresence } from 'framer-motion' 
 
 export default function RegisterStorePage() {
   const params = useParams()
@@ -24,18 +24,15 @@ export default function RegisterStorePage() {
 
   // Estados de UI
   const [loading, setLoading] = useState(false)
-  
-  // NUEVO: Estado para los Toasts Flotantes (Reemplaza al antiguo 'error' estático)
   const [toastMessage, setToastMessage] = useState<{ text: string, type: 'error' | 'loading' } | null>(null)
   
   // Estado de Éxito y Premio
   const [success, setSuccess] = useState(false)
   const [wonPrize, setWonPrize] = useState<{ name: string, image_url: string | null } | null>(null)
 
-  // NUEVO: Función auxiliar para mostrar Toasts de error temporalmente
   const showErrorToast = (message: string) => {
     setToastMessage({ text: message, type: 'error' })
-    setTimeout(() => setToastMessage(null), 4000) // Desaparece a los 4 segundos
+    setTimeout(() => setToastMessage(null), 4000) 
   }
 
   useEffect(() => {
@@ -60,6 +57,16 @@ export default function RegisterStorePage() {
 
     fetchStore()
   }, [storeId])
+
+  // --- FUNCIÓN SÚPER LIGERA PARA TRAER LA IMAGEN DEL PREMIO ---
+  // No necesitamos bajar 5MB de imagen para mostrar un cuadradito
+  const getThumbnailUrl = (fullUrl: string | null) => {
+    if (!fullUrl) return ''
+    if (fullUrl.includes('/storage/v1/object/public/')) {
+      return fullUrl.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + '?width=400&height=400&resize=contain'
+    }
+    return fullUrl
+  }
 
   // --- FUNCIÓN DE COMPRESIÓN SÚPER AGRESIVA (WebP + 800px) ---
   const compressImage = async (file: File): Promise<File> => {
@@ -101,9 +108,8 @@ export default function RegisterStorePage() {
     })
   }
 
-  // --- VALIDACIÓN DE ARCHIVO AL SELECCIONAR ---
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setToastMessage(null) // Limpiamos cualquier error previo
+    setToastMessage(null) 
     const file = e.target.files?.[0]
     
     if (!file) {
@@ -140,7 +146,6 @@ export default function RegisterStorePage() {
     setToastMessage({ text: 'Validando registro y subiendo foto...', type: 'loading' })
 
     try {
-      // 1. ASIGNACIÓN SEGURA DE PREMIO
       const { data: availablePrizes, error: prizesError } = await supabase
         .from('prizes')
         .select('id, name, stock, image_url')
@@ -166,7 +171,6 @@ export default function RegisterStorePage() {
         }
       }
 
-      // 2. COMPRESIÓN Y SUBIDA DEL VOUCHER
       const optimizedFile = await compressImage(voucherFile)
       
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.webp`
@@ -183,7 +187,6 @@ export default function RegisterStorePage() {
         .getPublicUrl(filePath)
       const voucherUrl = publicUrlData.publicUrl
 
-      // 3. GUARDAR REGISTRO
       const { error: insertError } = await supabase
         .from('registrations')
         .insert({
@@ -203,7 +206,7 @@ export default function RegisterStorePage() {
           setWonPrize({ name: assignedPrize.name, image_url: assignedPrize.image_url })
       }
       
-      setToastMessage(null) // Quitamos el loading
+      setToastMessage(null) 
       setSuccess(true)
 
     } catch (err: any) {
@@ -225,11 +228,12 @@ export default function RegisterStorePage() {
     )
   }
 
-  // --- PANTALLA DE ÉXITO ESTILO APPLE ---
+  // --- PANTALLA DE ÉXITO LIGERA PARA MÓVIL ---
   if (success) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#F5F5F7] dark:bg-black p-4 text-center font-sans">
-        <div className="bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl p-8 sm:p-10 rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.5)] border border-white dark:border-zinc-800 max-w-md w-full relative overflow-hidden">
+        {/* OPTIMIZACIÓN: Fondo sólido en celular (bg-white), cristal en desktop (md:bg-white/80 md:backdrop-blur-xl) */}
+        <div className="bg-white dark:bg-zinc-900 md:bg-white/80 md:dark:bg-zinc-900/80 md:backdrop-blur-xl p-8 sm:p-10 rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.5)] border border-zinc-100 dark:border-zinc-800 md:border-white max-w-md w-full relative overflow-hidden">
           
           <div className="relative z-10">
               {wonPrize ? (
@@ -237,13 +241,14 @@ export default function RegisterStorePage() {
                     <h1 className="text-4xl font-black text-black dark:text-white mb-2 tracking-tight">¡Ganaste!</h1>
                     <p className="text-zinc-500 dark:text-zinc-400 font-medium mb-8">Acércate al módulo para reclamar:</p>
                     
-                    {/* TARJETA DE PREMIO PREMIUM */}
                     <div className="bg-[#F5F5F7] dark:bg-black p-8 rounded-[2rem] mb-10 w-full transform transition-all duration-500 hover:scale-105 border border-zinc-200/50 dark:border-zinc-800 shadow-inner">
                         {wonPrize.image_url ? (
                             <div className="aspect-square w-full relative mb-6">
+                                {/* OPTIMIZACIÓN: Usamos el thumbnail súper ligero que acabamos de crear */}
                                 <img 
-                                    src={wonPrize.image_url} 
+                                    src={getThumbnailUrl(wonPrize.image_url)} 
                                     alt={wonPrize.name} 
+                                    loading="lazy"
                                     className="absolute inset-0 w-full h-full object-contain drop-shadow-2xl"
                                 />
                             </div>
@@ -282,11 +287,10 @@ export default function RegisterStorePage() {
     )
   }
 
-  // --- FORMULARIO ESTILO APPLE ---
+  // --- FORMULARIO OPTIMIZADO PARA MÓVIL ---
   return (
     <div className="min-h-screen bg-[#F5F5F7] dark:bg-black p-4 md:p-8 flex flex-col items-center justify-center font-sans relative">
       
-      {/* NUEVO: TOAST FLOTANTE PARA ERRORES Y CARGA */}
       <AnimatePresence>
         {toastMessage && (
           <motion.div 
@@ -310,9 +314,9 @@ export default function RegisterStorePage() {
         )}
       </AnimatePresence>
 
-      <div className="max-w-md w-full bg-white/70 dark:bg-zinc-900/70 backdrop-blur-2xl rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.5)] border border-white/50 dark:border-zinc-800 overflow-hidden">
+      {/* OPTIMIZACIÓN: Desactivamos el cristal en móviles. Ahora es sólido de base, y borroso en tablets/PC */}
+      <div className="max-w-md w-full bg-white dark:bg-zinc-900 md:bg-white/70 md:dark:bg-zinc-900/70 md:backdrop-blur-2xl rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.5)] border border-zinc-100 dark:border-zinc-800 md:border-white/50 overflow-hidden">
         
-        {/* Cabecera Clean */}
         <div className="pt-10 pb-6 px-8 text-center relative">
           <div className="w-16 h-16 bg-black dark:bg-white rounded-[1.5rem] flex items-center justify-center mx-auto mb-5 shadow-lg rotate-3">
               <Gift size={32} className="text-white dark:text-black -rotate-3" />
@@ -325,10 +329,7 @@ export default function RegisterStorePage() {
         </div>
 
         <form onSubmit={handleSubmit} className="px-8 pb-10 space-y-5">
-          
-          {/* ELIMINADO: Bloque de error estático rojo (Reemplazado por el Toast) */}
 
-          {/* INPUTS ESTILO IOS */}
           <div className="space-y-4">
               <div>
                 <input 
@@ -364,7 +365,6 @@ export default function RegisterStorePage() {
               </div>
           </div>
 
-          {/* UPLOAD ÁREA MEJORADA CON VALIDACIÓN Y CAPTURA MÓVIL */}
           <div className="pt-2">
             <label className={`
               flex flex-col items-center justify-center w-full h-32 rounded-[2rem] cursor-pointer transition-all border-2
@@ -394,10 +394,9 @@ export default function RegisterStorePage() {
             </label>
           </div>
 
-          {/* BOTÓN FINAL */}
           <button 
             type="submit" disabled={loading}
-            className="w-full mt-8 bg-blue-600 text-white font-bold text-xl py-4 rounded-full hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30"
+            className="w-full mt-8 bg-blue-600 text-white font-bold text-xl py-4 rounded-full hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-[0_10px_30px_rgba(37,99,235,0.4)]"
           >
             {loading ? <Loader2 className="animate-spin" size={24} /> : 'Enviar y Participar'}
           </button>
