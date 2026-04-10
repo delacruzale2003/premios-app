@@ -4,9 +4,8 @@ import { Plus, Store, Link as LinkIcon, Check, Trash2, Download, ArrowDownAZ, Cl
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { QRCodeCanvas } from 'qrcode.react'
-import { motion, AnimatePresence, Variants } from 'framer-motion'
+import { motion, AnimatePresence, Variants } from 'framer-motion' 
 
-// Configuraciones de animación
 const listVariants: Variants = {
   hidden: { opacity: 0 },
   show: {
@@ -20,7 +19,6 @@ const itemVariants: Variants = {
   show: { opacity: 1, y: 0, scale: 1, transition: { type: "spring" as const, stiffness: 300, damping: 24 } }
 }
 
-// NUEVO: Cantidad de tiendas a cargar por bloque
 const ITEMS_PER_PAGE = 15
 
 export default function StoresSidebar({ stores, selectedStore, onSelect, campaignId, campaignUrl, refreshStores, isMobile }: any) {
@@ -32,8 +30,6 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
   const [searchTerm, setSearchTerm] = useState('')
 
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  
-  // NUEVO: Estado para controlar cuántas tiendas mostramos
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE)
 
   useEffect(() => {
@@ -59,7 +55,6 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
     fetchAllStocks()
   }, [campaignId, stores]) 
 
-  // NUEVO: Reseteamos la cantidad visible si el usuario busca algo
   useEffect(() => {
     setVisibleCount(ITEMS_PER_PAGE)
   }, [searchTerm, sortBy])
@@ -72,7 +67,7 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
     if (!error) {
       setNewStoreName('')
       refreshStores('Creando tienda...')
-      setVisibleCount(ITEMS_PER_PAGE) // Volvemos a la primera página para que vea su tienda nueva
+      setVisibleCount(ITEMS_PER_PAGE) 
     }
   }
 
@@ -117,7 +112,6 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
     }
   }
 
-  // Filtrado y Ordenado (Se hace en memoria completo)
   const filteredAndSortedStores = [...stores]
     .filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()))
     .sort((a, b) => {
@@ -128,12 +122,10 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
       }
     })
 
-  // NUEVO: Cortamos el array resultante para mostrar solo las permitidas
   const visibleStores = filteredAndSortedStores.slice(0, visibleCount)
   const hasMore = visibleStores.length < filteredAndSortedStores.length
 
   return (
-    // OPTIMIZACIÓN: Quitamos backdrop-blur en móviles usando prefijos md:
     <div className="flex flex-col h-[500px] lg:h-[700px] bg-white dark:bg-zinc-900 md:bg-zinc-100/50 md:dark:bg-zinc-900/30 md:backdrop-blur-xl rounded-[2.5rem] border border-zinc-200 md:border-white dark:border-zinc-800 md:dark:border-zinc-800/50 p-4 shadow-sm md:shadow-inner overflow-hidden transition-all">
       
       <div className="px-3 pt-3 pb-4 flex items-center gap-2 font-bold text-xl tracking-tight">
@@ -184,38 +176,29 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
         </button>
       </div>
 
-      <motion.div 
-        variants={listVariants}
-        initial="hidden"
-        animate="show"
-        className="flex-1 overflow-y-auto px-1 space-y-2.5 custom-scrollbar pb-6"
-      >
-        <AnimatePresence mode="popLayout">
+      {/* OPTIMIZACIÓN: Div estático en móvil, motion.div en desktop */}
+      {isMobile ? (
+        <div className="flex-1 overflow-y-auto px-1 space-y-2.5 custom-scrollbar pb-6">
           {filteredAndSortedStores.length === 0 ? (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center text-zinc-400 text-sm mt-10">
-              No se encontraron tiendas.
-            </motion.div>
+            <div className="text-center text-zinc-400 text-sm mt-10">No se encontraron tiendas.</div>
           ) : (
-            // NUEVO: Renderizamos solo la rebanada 'visibleStores'
             visibleStores.map((s: any) => {
               const totalPrizes = storeStocks[s.id] || 0 
               const isDeleting = deletingId === s.id
+              const isSelected = selectedStore === s.id
 
               return (
-                <motion.div 
-                  variants={itemVariants}
-                  // OPTIMIZACIÓN: Si es móvil, quitamos el 'layout' animation pesado
-                  layout={!isMobile} 
+                <div 
                   key={s.id} 
                   onClick={() => onSelect(s.id)}
-                  className={`group relative p-4 rounded-[1.5rem] cursor-pointer flex justify-between items-center transition-colors duration-300 border
-                    ${selectedStore === s.id 
-                      ? 'bg-zinc-100 md:bg-white dark:bg-zinc-800 border-zinc-200 md:border-zinc-200/50 dark:border-zinc-700 shadow-sm md:shadow-xl' 
-                      : 'bg-transparent border-transparent hover:bg-zinc-50 md:hover:bg-white/40 dark:hover:bg-zinc-800/50 md:dark:hover:bg-zinc-800/20'
+                  className={`relative p-4 rounded-[1.5rem] flex justify-between items-center border
+                    ${isSelected 
+                      ? 'bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 shadow-sm' 
+                      : 'bg-transparent border-transparent'
                     }`}
                 >
                   <div className="flex flex-col gap-1 pr-4 truncate">
-                    <span className={`text-[15px] truncate ${selectedStore === s.id ? 'font-bold text-black dark:text-white' : 'font-medium text-zinc-600 dark:text-zinc-300'}`}>
+                    <span className={`text-[15px] truncate ${isSelected ? 'font-bold text-black dark:text-white' : 'font-medium text-zinc-600 dark:text-zinc-300'}`}>
                       {s.name}
                     </span>
                     
@@ -227,85 +210,198 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
                     </div>
                   </div>
                   
-                  <div className={`flex items-center gap-1 absolute right-2 transition-all duration-300 ${isDeleting ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 translate-x-2 group-hover:translate-x-0'}`}>
-                    
-                    {!isDeleting && (
-                      <>
-                        <button 
-                          onClick={(e) => downloadQr(e, s)} 
-                          className="bg-white dark:bg-zinc-700 p-2 rounded-full hover:bg-black hover:text-white transition-all shadow-md border border-zinc-200/50 dark:border-zinc-600"
-                          title="Descargar QR Limpio"
-                        >
-                          <Download size={14} className="text-zinc-700 dark:text-zinc-300 hover:text-white" />
-                        </button>
-
-                        <button 
-                          onClick={(e) => handleCopyLink(e, s.id)} 
-                          className="bg-white dark:bg-zinc-700 p-2 rounded-full hover:bg-blue-500 transition-all shadow-md border border-zinc-200/50 dark:border-zinc-600 group/btn"
-                          title="Copiar link de la tienda"
-                        >
-                          {copiedId === s.id 
-                            ? <Check size={14} strokeWidth={3} className="text-blue-500 group-hover/btn:text-white" /> 
-                            : <LinkIcon size={14} className="text-zinc-700 dark:text-zinc-300 group-hover/btn:text-white" />
-                          }
-                        </button>
-                      </>
-                    )}
-                    
-                    <button 
-                      onClick={(e) => handleDeleteClick(e, s.id)} 
-                      className={`flex items-center gap-1.5 p-2 rounded-full transition-all shadow-md border ${
-                        isDeleting 
-                          ? 'bg-red-500 text-white border-red-600 w-auto px-3' 
-                          : 'bg-white dark:bg-zinc-700 hover:bg-red-500 border-zinc-200/50 dark:border-zinc-600 group/btn'
-                      }`}
-                      title={isDeleting ? "Click para confirmar" : "Eliminar tienda"}
-                    >
-                      {isDeleting ? (
+                  {/* OPTIMIZACIÓN MÓVIL: Los botones solo aparecen si la tienda está seleccionada */}
+                  {isSelected && (
+                    <div className="flex items-center gap-1 absolute right-2">
+                      
+                      {!isDeleting && (
                         <>
-                          <AlertTriangle size={14} strokeWidth={3} className="animate-pulse" />
-                          <span className="text-[10px] font-bold uppercase tracking-wider">Borrar</span>
-                        </>
-                      ) : (
-                        <Trash2 size={14} className="text-zinc-700 dark:text-zinc-300 group-hover/btn:text-white" />
-                      )}
-                    </button>
+                          <button 
+                            onClick={(e) => downloadQr(e, s)} 
+                            className="bg-white dark:bg-zinc-700 p-2 rounded-full shadow-md border border-zinc-200/50 dark:border-zinc-600"
+                          >
+                            <Download size={14} className="text-zinc-700 dark:text-zinc-300" />
+                          </button>
 
-                    <div className="hidden">
-                      <QRCodeCanvas 
-                        id={`qr-${s.id}`} 
-                        value={`https://${getStoreLink(s.id)}`} 
-                        size={1024} 
-                        level={"M"}  
-                        marginSize={1} 
-                        bgColor={"#ffffff"}
-                        fgColor={"#000000"}
-                      />
+                          <button 
+                            onClick={(e) => handleCopyLink(e, s.id)} 
+                            className="bg-white dark:bg-zinc-700 p-2 rounded-full shadow-md border border-zinc-200/50 dark:border-zinc-600"
+                          >
+                            {copiedId === s.id 
+                              ? <Check size={14} strokeWidth={3} className="text-blue-500" /> 
+                              : <LinkIcon size={14} className="text-zinc-700 dark:text-zinc-300" />
+                            }
+                          </button>
+                        </>
+                      )}
+                      
+                      <button 
+                        onClick={(e) => handleDeleteClick(e, s.id)} 
+                        className={`flex items-center gap-1.5 p-2 rounded-full shadow-md border ${
+                          isDeleting 
+                            ? 'bg-red-500 text-white border-red-600 w-auto px-3' 
+                            : 'bg-white dark:bg-zinc-700 border-zinc-200/50 dark:border-zinc-600'
+                        }`}
+                      >
+                        {isDeleting ? (
+                          <>
+                            <AlertTriangle size={14} strokeWidth={3} className="animate-pulse" />
+                            <span className="text-[10px] font-bold uppercase tracking-wider">Borrar</span>
+                          </>
+                        ) : (
+                          <Trash2 size={14} className="text-zinc-700 dark:text-zinc-300" />
+                        )}
+                      </button>
+
+                      <div className="hidden">
+                        <QRCodeCanvas 
+                          id={`qr-${s.id}`} 
+                          value={`https://${getStoreLink(s.id)}`} 
+                          size={1024} 
+                          level={"M"}  
+                          marginSize={1} 
+                          bgColor={"#ffffff"}
+                          fgColor={"#000000"}
+                        />
+                      </div>
                     </div>
-                  </div>
-                </motion.div>
+                  )}
+                </div>
               )
             })
           )}
-        </AnimatePresence>
+          {hasMore && (
+            <div className="flex justify-center mt-4 pb-2">
+              <button 
+                onClick={() => setVisibleCount(prev => prev + ITEMS_PER_PAGE)}
+                className="flex items-center gap-2 px-5 py-2.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 text-xs font-bold rounded-full transition-all border border-zinc-200 dark:border-zinc-700 shadow-sm"
+              >
+                Ver más tiendas <ChevronDown size={14} />
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <motion.div 
+          variants={listVariants}
+          initial="hidden"
+          animate="show"
+          className="flex-1 overflow-y-auto px-1 space-y-2.5 custom-scrollbar pb-6"
+        >
+          <AnimatePresence mode="popLayout">
+            {filteredAndSortedStores.length === 0 ? (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center text-zinc-400 text-sm mt-10">
+                No se encontraron tiendas.
+              </motion.div>
+            ) : (
+              visibleStores.map((s: any) => {
+                const totalPrizes = storeStocks[s.id] || 0 
+                const isDeleting = deletingId === s.id
 
-        {/* NUEVO: Botón de "Ver más" que solo aparece si hay más tiendas */}
-        {hasMore && (
-          <motion.div 
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
-            className="flex justify-center mt-4 pb-2"
-          >
-            <button 
-              onClick={() => setVisibleCount(prev => prev + ITEMS_PER_PAGE)}
-              className="flex items-center gap-2 px-5 py-2.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 text-xs font-bold rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all border border-zinc-200 dark:border-zinc-700 shadow-sm"
+                return (
+                  <motion.div 
+                    variants={itemVariants}
+                    layout 
+                    key={s.id} 
+                    onClick={() => onSelect(s.id)}
+                    className={`group relative p-4 rounded-[1.5rem] cursor-pointer flex justify-between items-center transition-colors duration-300 border
+                      ${selectedStore === s.id 
+                        ? 'bg-white dark:bg-zinc-800 border-zinc-200/50 dark:border-zinc-700 shadow-xl' 
+                        : 'bg-transparent border-transparent hover:bg-white/40 dark:hover:bg-zinc-800/20'
+                      }`}
+                  >
+                    <div className="flex flex-col gap-1 pr-4 truncate">
+                      <span className={`text-[15px] truncate ${selectedStore === s.id ? 'font-bold text-black dark:text-white' : 'font-medium text-zinc-600 dark:text-zinc-300'}`}>
+                        {s.name}
+                      </span>
+                      
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <Package size={12} className={totalPrizes > 0 ? "text-blue-500" : "text-zinc-400"} />
+                        <span className={`font-bold ${totalPrizes > 0 ? "text-blue-600 dark:text-blue-400" : "text-zinc-400"}`}>
+                          {totalPrizes} premios
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <div className={`flex items-center gap-1 absolute right-2 transition-all duration-300 ${isDeleting ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 translate-x-2 group-hover:translate-x-0'}`}>
+                      
+                      {!isDeleting && (
+                        <>
+                          <button 
+                            onClick={(e) => downloadQr(e, s)} 
+                            className="bg-white dark:bg-zinc-700 p-2 rounded-full hover:bg-black hover:text-white transition-all shadow-md border border-zinc-200/50 dark:border-zinc-600"
+                            title="Descargar QR Limpio"
+                          >
+                            <Download size={14} className="text-zinc-700 dark:text-zinc-300 hover:text-white" />
+                          </button>
+
+                          <button 
+                            onClick={(e) => handleCopyLink(e, s.id)} 
+                            className="bg-white dark:bg-zinc-700 p-2 rounded-full hover:bg-blue-500 transition-all shadow-md border border-zinc-200/50 dark:border-zinc-600 group/btn"
+                            title="Copiar link de la tienda"
+                          >
+                            {copiedId === s.id 
+                              ? <Check size={14} strokeWidth={3} className="text-blue-500 group-hover/btn:text-white" /> 
+                              : <LinkIcon size={14} className="text-zinc-700 dark:text-zinc-300 group-hover/btn:text-white" />
+                            }
+                          </button>
+                        </>
+                      )}
+                      
+                      <button 
+                        onClick={(e) => handleDeleteClick(e, s.id)} 
+                        className={`flex items-center gap-1.5 p-2 rounded-full transition-all shadow-md border ${
+                          isDeleting 
+                            ? 'bg-red-500 text-white border-red-600 w-auto px-3' 
+                            : 'bg-white dark:bg-zinc-700 hover:bg-red-500 border-zinc-200/50 dark:border-zinc-600 group/btn'
+                        }`}
+                        title={isDeleting ? "Click para confirmar" : "Eliminar tienda"}
+                      >
+                        {isDeleting ? (
+                          <>
+                            <AlertTriangle size={14} strokeWidth={3} className="animate-pulse" />
+                            <span className="text-[10px] font-bold uppercase tracking-wider">Borrar</span>
+                          </>
+                        ) : (
+                          <Trash2 size={14} className="text-zinc-700 dark:text-zinc-300 group-hover/btn:text-white" />
+                        )}
+                      </button>
+
+                      <div className="hidden">
+                        <QRCodeCanvas 
+                          id={`qr-${s.id}`} 
+                          value={`https://${getStoreLink(s.id)}`} 
+                          size={1024} 
+                          level={"M"}  
+                          marginSize={1} 
+                          bgColor={"#ffffff"}
+                          fgColor={"#000000"}
+                        />
+                      </div>
+                    </div>
+                  </motion.div>
+                )
+              })
+            )}
+          </AnimatePresence>
+
+          {hasMore && (
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              className="flex justify-center mt-4 pb-2"
             >
-              Ver más tiendas <ChevronDown size={14} />
-            </button>
-          </motion.div>
-        )}
-        
-      </motion.div>
+              <button 
+                onClick={() => setVisibleCount(prev => prev + ITEMS_PER_PAGE)}
+                className="flex items-center gap-2 px-5 py-2.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 text-xs font-bold rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all border border-zinc-200 dark:border-zinc-700 shadow-sm"
+              >
+                Ver más tiendas <ChevronDown size={14} />
+              </button>
+            </motion.div>
+          )}
+          
+        </motion.div>
+      )}
     </div>
   )
 }
