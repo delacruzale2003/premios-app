@@ -4,9 +4,23 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Loader2, Image as ImageIcon, X, Ticket, CalendarClock, User, Smartphone, Info, Search } from 'lucide-react'
 import { createPortal } from 'react-dom'
+import { motion, AnimatePresence, Variants } from 'framer-motion'
 
 interface Props {
   storeId: string
+}
+
+const tableVariants: Variants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.03 } 
+  }
+}
+
+const rowVariants: Variants = {
+  hidden: { opacity: 0, x: -10 },
+  show: { opacity: 1, x: 0, transition: { type: "spring" as const, stiffness: 300, damping: 24 } }
 }
 
 export default function StoreRegistrations({ storeId }: Props) {
@@ -16,12 +30,10 @@ export default function StoreRegistrations({ storeId }: Props) {
   const [mounted, setMounted] = useState(false)
   const [totalCount, setTotalCount] = useState(0)
 
-  // NUEVO: Estado para el buscador
   const [searchTerm, setSearchTerm] = useState('')
 
   useEffect(() => {
     setMounted(true)
-    // Debounce para no saturar la base de datos mientras el usuario escribe
     const delayDebounceFn = setTimeout(() => {
       fetchRegistrations(searchTerm)
     }, 400)
@@ -48,7 +60,6 @@ export default function StoreRegistrations({ storeId }: Props) {
   async function fetchRegistrations(search: string = '') {
     setLoading(true)
     
-    // 1. Obtener el conteo total REAL (sin filtros de búsqueda) para el resumen
     const { count } = await supabase
       .from('registrations')
       .select('*', { count: 'exact', head: true })
@@ -56,7 +67,6 @@ export default function StoreRegistrations({ storeId }: Props) {
       
     if (count !== null) setTotalCount(count)
 
-    // 2. Construir la consulta principal (Limitada a 25)
     let query = supabase
       .from('registrations')
       .select(`
@@ -65,11 +75,9 @@ export default function StoreRegistrations({ storeId }: Props) {
       `)
       .eq('store_id', storeId)
       .order('created_at', { ascending: false })
-      .limit(25) // SOLO LOS ÚLTIMOS 25
+      .limit(25)
 
-    // 3. Aplicar filtro si hay texto en el buscador
     if (search.trim() !== '') {
-        // Busca coincidencias en el DNI o en el Nombre (ilike = case insensitive)
         query = query.or(`dni.ilike.%${search}%,full_name.ilike.%${search}%`)
     }
 
@@ -118,18 +126,17 @@ export default function StoreRegistrations({ storeId }: Props) {
   }
 
   return (
-    <div className="flex flex-col h-full animate-in fade-in duration-500 relative">
+    <div className="flex flex-col h-[500px] lg:h-[700px] bg-zinc-100/50 dark:bg-zinc-900/30 backdrop-blur-xl rounded-[2.5rem] border border-white dark:border-zinc-800/50 p-6 shadow-inner relative animate-in fade-in duration-500 overflow-hidden">
       
       {/* CABECERA: RESUMEN Y BUSCADOR */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6">
-          <div className="flex items-center gap-3 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 px-4 py-2.5 rounded-2xl w-full sm:w-auto">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-4">
+          <div className="flex items-center gap-3 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 px-4 py-2.5 rounded-2xl w-full sm:w-auto shadow-sm">
               <Info size={18} className="text-blue-500 shrink-0" />
               <p className="text-sm text-blue-800 dark:text-blue-300 font-medium">
                   Total en tienda: <span className="font-black text-lg mx-1">{totalCount}</span>
               </p>
           </div>
 
-          {/* BUSCADOR */}
           <div className="relative w-full sm:w-72">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
                   <Search size={16} />
@@ -146,12 +153,12 @@ export default function StoreRegistrations({ storeId }: Props) {
 
       {/* ÁREA DE CONTENIDO */}
       {loading && registrations.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-zinc-400 py-20">
+          <div className="flex-1 flex flex-col items-center justify-center text-zinc-400">
               <Loader2 className="animate-spin text-blue-500 mb-4" size={32} />
               <p className="font-medium">Buscando registros...</p>
           </div>
       ) : registrations.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-zinc-400 py-20 px-4 text-center border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-[2rem] bg-white/40 dark:bg-zinc-900/40">
+          <div className="flex-1 flex flex-col items-center justify-center text-zinc-400 px-4 text-center border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-[2rem] bg-white/40 dark:bg-zinc-900/40">
               <div className="w-20 h-20 bg-zinc-100 dark:bg-zinc-800/50 rounded-[1.5rem] flex items-center justify-center mb-6 shadow-inner">
                   {searchTerm ? <Search size={32} className="text-zinc-300 dark:text-zinc-600" /> : <Ticket size={32} className="text-zinc-300 dark:text-zinc-600 rotate-12" />}
               </div>
@@ -163,41 +170,59 @@ export default function StoreRegistrations({ storeId }: Props) {
               </p>
           </div>
       ) : (
-          <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar -mx-2 px-2">
-              <p className="text-[11px] text-zinc-400 font-bold uppercase tracking-widest mb-3 px-2">Mostrando los últimos 25 registros</p>
-              <table className="w-full text-left border-separate border-spacing-y-2">
+          <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar -mx-2 px-2 pb-6">
+              <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mb-3 px-2 sticky left-0">Mostrando los últimos 25 registros</p>
+              
+              {/* CAMBIO 1: table ahora tiene text-center en lugar de text-left */}
+              <table className="w-full text-center border-separate border-spacing-y-2 min-w-[700px]">
                   <thead className="sticky top-0 z-10 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-xl">
                       <tr>
-                          <th className="py-3 px-4 text-[10px] font-bold text-zinc-400 uppercase tracking-widest whitespace-nowrap rounded-l-2xl">Fecha</th>
-                          <th className="py-3 px-4 text-[10px] font-bold text-zinc-400 uppercase tracking-widest whitespace-nowrap">Participante</th>
-                          <th className="py-3 px-4 text-[10px] font-bold text-zinc-400 uppercase tracking-widest whitespace-nowrap">Contacto</th>
+                          {/* CAMBIO 2: Se agregó text-center a todos los encabezados (th) */}
+                          <th className="py-3 px-4 text-[10px] font-bold text-zinc-400 uppercase tracking-widest whitespace-nowrap rounded-l-2xl text-center">Fecha</th>
+                          <th className="py-3 px-4 text-[10px] font-bold text-zinc-400 uppercase tracking-widest whitespace-nowrap text-center">Participante</th>
+                          <th className="py-3 px-4 text-[10px] font-bold text-zinc-400 uppercase tracking-widest whitespace-nowrap text-center">Contacto</th>
                           <th className="py-3 px-4 text-[10px] font-bold text-zinc-400 uppercase tracking-widest whitespace-nowrap text-center">Voucher</th>
-                          <th className="py-3 px-4 text-[10px] font-bold text-zinc-400 uppercase tracking-widest whitespace-nowrap rounded-r-2xl">Premio Entregado</th>
+                          <th className="py-3 px-4 text-[10px] font-bold text-zinc-400 uppercase tracking-widest whitespace-nowrap rounded-r-2xl text-center">Premio Entregado</th>
                       </tr>
                   </thead>
-                  <tbody className="text-sm">
+                  
+                  <motion.tbody 
+                    variants={tableVariants}
+                    initial="hidden"
+                    animate="show"
+                    className="text-sm"
+                  >
                       {registrations.map((reg) => (
-                          <tr key={reg.id} className="bg-white dark:bg-zinc-800/40 shadow-sm border border-transparent hover:border-zinc-200 dark:hover:border-zinc-700 transition-all group">
+                          <motion.tr 
+                            variants={rowVariants}
+                            key={reg.id} 
+                            className="bg-white dark:bg-zinc-800/40 shadow-sm border border-transparent hover:border-zinc-200 dark:hover:border-zinc-700 transition-all group hover:scale-[1.01]"
+                          >
                               <td className="py-4 px-4 text-zinc-600 dark:text-zinc-400 whitespace-nowrap rounded-l-2xl border-t border-b border-l border-zinc-100 dark:border-zinc-800">
-                                  <div className="flex items-center gap-2 font-medium">
+                                  {/* CAMBIO 3: justify-center para centrar el icono y la fecha */}
+                                  <div className="flex items-center justify-center gap-2 font-medium">
                                       <CalendarClock size={14} className="opacity-40" />
                                       {formatDate(reg.created_at)}
                                   </div>
                               </td>
-                              <td className="py-4 px-4 border-t border-b border-zinc-100 dark:border-zinc-800">
-                                  <div className="font-bold text-zinc-900 dark:text-zinc-100 text-base">{reg.full_name}</div>
-                                  <div className="mt-1 flex items-center gap-1.5">
-                                      <span className="inline-flex items-center gap-1 bg-zinc-100 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 px-2 py-0.5 rounded-md text-[11px] font-bold tracking-wide">
+                              <td className="py-4 px-4 border-t border-b border-zinc-100 dark:border-zinc-800 text-center">
+                                  {/* CAMBIO 4: text-center y justify-center para el nombre y DNI */}
+                                  <div className="font-bold text-zinc-900 dark:text-zinc-100 text-base text-center">{reg.full_name}</div>
+                                  <div className="mt-1 flex items-center justify-center gap-1.5">
+                                      <span className="inline-flex items-center justify-center gap-1 bg-zinc-100 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 px-2 py-0.5 rounded-md text-[11px] font-bold tracking-wide">
                                           <User size={10} /> {reg.dni}
                                       </span>
                                   </div>
                               </td>
-                              <td className="py-4 px-4 border-t border-b border-zinc-100 dark:border-zinc-800">
-                                  {reg.phone ? (
-                                      <div className="inline-flex items-center gap-1.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-3 py-1.5 rounded-lg text-zinc-700 dark:text-zinc-300 font-medium">
-                                          <Smartphone size={14} className="text-zinc-400" /> {reg.phone}
-                                      </div>
-                                  ) : <span className="text-zinc-400 italic text-xs">No provisto</span>}
+                              <td className="py-4 px-4 border-t border-b border-zinc-100 dark:border-zinc-800 text-center">
+                                  {/* CAMBIO 5: Flex container alineado al centro para el celular */}
+                                  <div className="flex justify-center">
+                                      {reg.phone ? (
+                                          <div className="inline-flex items-center justify-center gap-1.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-3 py-1.5 rounded-lg text-zinc-700 dark:text-zinc-300 font-medium">
+                                              <Smartphone size={14} className="text-zinc-400" /> {reg.phone}
+                                          </div>
+                                      ) : <span className="text-zinc-400 italic text-xs">No provisto</span>}
+                                  </div>
                               </td>
                               <td className="py-4 px-4 text-center border-t border-b border-zinc-100 dark:border-zinc-800">
                                   {reg.voucher_url ? (
@@ -215,21 +240,22 @@ export default function StoreRegistrations({ storeId }: Props) {
                                       </div>
                                   )}
                               </td>
-                              <td className="py-4 px-4 rounded-r-2xl border-t border-b border-r border-zinc-100 dark:border-zinc-800">
+                              <td className="py-4 px-4 text-center rounded-r-2xl border-t border-b border-r border-zinc-100 dark:border-zinc-800">
+                                  {/* CAMBIO 6: Agregado text-center explícito a la celda del premio */}
                                   {reg.prize?.name ? (
-                                      <span className="inline-flex items-center gap-1.5 bg-amber-100/50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-400 px-3 py-2 rounded-xl text-xs font-bold border border-amber-200/50 dark:border-amber-900/50 shadow-sm">
+                                      <span className="inline-flex items-center justify-center gap-1.5 bg-amber-100/50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-400 px-3 py-2 rounded-xl text-xs font-bold border border-amber-200/50 dark:border-amber-900/50 shadow-sm">
                                           <Ticket size={14} className="text-amber-500" />
                                           {reg.prize.name}
                                       </span>
                                   ) : (
-                                      <span className="inline-flex items-center gap-1.5 bg-zinc-100 dark:bg-zinc-800/50 text-zinc-500 dark:text-zinc-400 px-3 py-2 rounded-xl text-xs font-bold">
+                                      <span className="inline-flex items-center justify-center gap-1.5 bg-zinc-100 dark:bg-zinc-800/50 text-zinc-500 dark:text-zinc-400 px-3 py-2 rounded-xl text-xs font-bold">
                                           Sin premio (Agotado)
                                       </span>
                                   )}
                               </td>
-                          </tr>
+                          </motion.tr>
                       ))}
-                  </tbody>
+                  </motion.tbody>
               </table>
           </div>
       )}
