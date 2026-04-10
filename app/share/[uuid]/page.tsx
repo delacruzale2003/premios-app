@@ -89,39 +89,58 @@ export default function ClientSharedPage() {
     if (!selectedStore || !campaign) return
     setIsSavingAll(true)
 
-    const prizesToUpsert = templates.map(t => {
-      const existingPrize = prizes.find(p => p.name === t.name)
-      
-      const payload: any = {
-        store_id: selectedStore,
-        campaign_id: campaign.id,
-        name: t.name,
-        stock: parseInt(localStock[t.name] || '0'),
-        image_url: t.image_url,
-        is_active: true,
-        batch_number: 1
+    try {
+      // Usamos un bucle para procesar cada premio uno por uno y evitar el error de estructura asimétrica
+      for (const t of templates) {
+        const stockValue = parseInt(localStock[t.name] || '0')
+        
+        // No guardamos stock negativo
+        if (stockValue < 0) continue; 
+
+        const existingPrize = prizes.find(p => p.name === t.name)
+        
+        if (existingPrize) {
+          // Si el premio YA EXISTE, hacemos un UPDATE
+          const { error } = await supabase
+            .from('prizes')
+            .update({
+              stock: stockValue,
+              image_url: t.image_url,
+              is_active: true
+            })
+            .eq('id', existingPrize.id)
+            
+          if (error) throw error
+          
+        } else {
+          // Si el premio es NUEVO para esta tienda, hacemos un INSERT
+          const { error } = await supabase
+            .from('prizes')
+            .insert({
+              store_id: selectedStore,
+              campaign_id: campaign.id,
+              name: t.name,
+              stock: stockValue,
+              image_url: t.image_url,
+              is_active: true,
+              batch_number: 1 // Forzamos el batch 1 para las tiendas nuevas
+            })
+            
+          if (error) throw error
+        }
       }
 
-      if (existingPrize) {
-        payload.id = existingPrize.id
-        payload.batch_number = existingPrize.batch_number 
-      }
-
-      return payload
-    }).filter(p => p.stock >= 0)
-
-    const { error } = await supabase.from('prizes').upsert(prizesToUpsert)
-
-    if (error) {
-      console.error("Error guardando el stock:", error)
-      alert("Hubo un error al guardar el inventario. Revisa la consola.")
-    } else {
+      // Si todo el bucle termina bien:
       setToastMessage({ text: 'Inventario guardado', type: 'success' })
       setTimeout(() => setToastMessage(null), 2500)
+      await fetchPrizes(selectedStore)
+      
+    } catch (error) {
+      console.error("Error guardando el stock:", error)
+      alert("Hubo un error al guardar el inventario. Revisa la consola.")
+    } finally {
+      setIsSavingAll(false)
     }
-
-    await fetchPrizes(selectedStore)
-    setIsSavingAll(false)
   }
 
   const exportToExcel = async () => {
