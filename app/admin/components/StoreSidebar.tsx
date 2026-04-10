@@ -4,7 +4,7 @@ import { Plus, Store, Link as LinkIcon, Check, Trash2, Download, ArrowDownAZ, Cl
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { QRCodeCanvas } from 'qrcode.react'
-import { motion, AnimatePresence, Variants } from 'framer-motion' // NUEVO: Framer Motion
+import { motion, AnimatePresence, Variants } from 'framer-motion' 
 
 // Configuraciones de animación
 const listVariants: Variants = {
@@ -28,7 +28,6 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
   const [storeStocks, setStoreStocks] = useState<Record<string, number>>({})
   const [searchTerm, setSearchTerm] = useState('')
 
-  // NUEVO: Estado para rastrear qué tienda está en "modo confirmación de borrado"
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -61,7 +60,7 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
     const { error } = await supabase.from('stores').insert({ name: cleanStoreName, campaign_id: campaignId })
     if (!error) {
       setNewStoreName('')
-      refreshStores()
+      refreshStores('Creando tienda...')
     }
   }
 
@@ -92,16 +91,13 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
     document.body.removeChild(downloadLink)
   }
 
-  // NUEVO: Lógica de doble click para eliminar
   const handleDeleteClick = async (e: any, id: string) => {
     e.stopPropagation()
     if (deletingId === id) {
-      // Segundo click: Confirma y elimina
       await supabase.from('stores').update({ is_active: false }).eq('id', id)
       setDeletingId(null)
-      refreshStores()
+      refreshStores('Eliminando tienda...')
     } else {
-      // Primer click: Entra en estado de advertencia por 3 segundos
       setDeletingId(id)
       setTimeout(() => {
         setDeletingId((current) => current === id ? null : current)
@@ -170,7 +166,6 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
         </button>
       </div>
 
-      {/* NUEVO: Lista animada con Framer Motion */}
       <motion.div 
         variants={listVariants}
         initial="hidden"
@@ -190,7 +185,7 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
               return (
                 <motion.div 
                   variants={itemVariants}
-                  layout // Permite que se reorganicen fluidamente al filtrar/ordenar
+                  layout 
                   key={s.id} 
                   onClick={() => onSelect(s.id)}
                   className={`group relative p-4 rounded-[1.5rem] cursor-pointer flex justify-between items-center transition-colors duration-300 border
@@ -212,10 +207,8 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
                     </div>
                   </div>
                   
-                  {/* Contenedor de Botones - Transparente */}
                   <div className={`flex items-center gap-1 absolute right-2 transition-all duration-300 ${isDeleting ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 translate-x-2 group-hover:translate-x-0'}`}>
                     
-                    {/* Ocultamos los otros botones si estamos en modo confirmación */}
                     {!isDeleting && (
                       <>
                         <button 
@@ -239,7 +232,6 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
                       </>
                     )}
                     
-                    {/* BOTÓN ELIMINAR INTERACTIVO */}
                     <button 
                       onClick={(e) => handleDeleteClick(e, s.id)} 
                       className={`flex items-center gap-1.5 p-2 rounded-full transition-all shadow-md border ${
@@ -262,7 +254,8 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
                     <div className="hidden">
                       <QRCodeCanvas 
                         id={`qr-${s.id}`} 
-                        value={getStoreLink(s.id)} 
+                        // CAMBIO CLAVE AQUÍ: Le inyectamos el https:// directamente al QR
+                        value={`https://${getStoreLink(s.id)}`} 
                         size={1024} 
                         level={"M"}  
                         marginSize={1} 

@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useParams } from 'next/navigation'
-import { Loader2, Store } from 'lucide-react'
+import { Loader2, Store, CheckCircle2 } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import { motion, AnimatePresence } from 'framer-motion' // NUEVO: Importamos Framer Motion para el Toast
 
 // Componentes Segmentados
 import CampaignHeader from '@/app/admin/components/CampaignHeader' 
@@ -18,7 +19,7 @@ export default function ClientSharedPage() {
   const shareUuid = params.uuid as string
 
   // --- ESTADOS GLOBALES ---
-  const [loading, setLoading] = useState(true)
+  const [initialLoad, setInitialLoad] = useState(true) // CAMBIADO: De `loading` a `initialLoad` para distinguir la primera carga
   const [error, setError] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [campaign, setCampaign] = useState<any>(null)
@@ -33,13 +34,17 @@ export default function ClientSharedPage() {
   const [isSavingAll, setIsSavingAll] = useState(false)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
 
+  // NUEVO: Estado para el Toast flotante
+  const [toastMessage, setToastMessage] = useState<{ text: string, type: 'loading' | 'success' } | null>(null)
+
   useEffect(() => { if (shareUuid) initPage() }, [shareUuid])
   useEffect(() => { if (selectedStore) fetchPrizes(selectedStore) }, [selectedStore])
 
+  // Carga inicial completa (Muestra pantalla blanca)
   async function initPage() {
-    setLoading(true)
+    setInitialLoad(true)
     const { data: campData, error } = await supabase.from('campaigns').select('*').eq('share_uuid', shareUuid).single()
-    if (error || !campData) { setError(true); setLoading(false); return }
+    if (error || !campData) { setError(true); setInitialLoad(false); return }
     setCampaign(campData)
 
     const { data: tmplData } = await supabase.from('prize_templates').select('*').eq('campaign_id', campData.id).order('created_at', { ascending: true })
@@ -47,7 +52,20 @@ export default function ClientSharedPage() {
 
     const { data: storeData } = await supabase.from('stores').select('*').eq('campaign_id', campData.id).eq('is_active', true).order('created_at', { ascending: true })
     setStores(storeData || [])
-    setLoading(false)
+    setInitialLoad(false)
+  }
+
+  // NUEVO: Función para recargar silenciosamente usando Toast
+  async function refreshStoresBackground(actionText: string) {
+    if (!campaign) return
+
+    setToastMessage({ text: actionText, type: 'loading' })
+
+    const { data: storeData } = await supabase.from('stores').select('*').eq('campaign_id', campaign.id).eq('is_active', true).order('created_at', { ascending: true })
+    if (storeData) setStores(storeData)
+
+    setToastMessage({ text: 'Completado con éxito', type: 'success' })
+    setTimeout(() => setToastMessage(null), 2500)
   }
 
   async function fetchPrizes(storeId: string) {
@@ -59,7 +77,7 @@ export default function ClientSharedPage() {
     setLocalStock(initialStock)
   }
 
-const saveAllStockToDb = async () => {
+  const saveAllStockToDb = async () => {
     if (!selectedStore || !campaign) return
     setIsSavingAll(true)
 
@@ -89,6 +107,10 @@ const saveAllStockToDb = async () => {
     if (error) {
       console.error("Error guardando el stock:", error)
       alert("Hubo un error al guardar el inventario. Revisa la consola.")
+    } else {
+      // NUEVO: Añadido feedback al guardar inventario
+      setToastMessage({ text: 'Inventario guardado', type: 'success' })
+      setTimeout(() => setToastMessage(null), 2500)
     }
 
     await fetchPrizes(selectedStore)
@@ -114,13 +136,34 @@ const saveAllStockToDb = async () => {
     setIsExporting(false)
   }
 
-  if (loading) return <div className="min-h-screen bg-[#F5F5F7] flex items-center justify-center"><Loader2 className="animate-spin text-zinc-400" size={32} /></div>
+  // La pantalla de carga blanca (Flashbang) AHORA SOLO aparece la primera vez que entras a la URL
+  if (initialLoad) return <div className="min-h-screen bg-[#F5F5F7] dark:bg-black flex items-center justify-center"><Loader2 className="animate-spin text-zinc-400" size={32} /></div>
 
   return (
-    // Removimos restricciones de ancho en el main container para que sea fluido
-    <div className="min-h-screen bg-[#F5F5F7] dark:bg-black text-zinc-900 dark:text-zinc-100 p-4 sm:p-8 font-sans w-full">
+    <div className="min-h-screen bg-[#F5F5F7] dark:bg-black text-zinc-900 dark:text-zinc-100 p-4 sm:p-8 font-sans w-full relative">
       
-      {/* CAMBIO CLAVE AQUÍ: Cambiamos max-w-7xl por w-full */}
+      {/* NUEVO: TOAST FLOTANTE */}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div 
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            className="fixed bottom-8 right-8 z-[9999] flex items-center gap-3 bg-white dark:bg-zinc-800 text-black dark:text-white px-5 py-3 rounded-full shadow-2xl border border-zinc-200 dark:border-zinc-700 font-bold text-sm"
+          >
+            {toastMessage.type === 'loading' ? (
+              <Loader2 className="animate-spin text-blue-500" size={18} />
+            ) : (
+              <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring" }}>
+                <CheckCircle2 className="text-green-500" size={18} />
+              </motion.div>
+            )}
+            {toastMessage.text}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Contenedor principal ahora usa w-full en lugar de max-w-7xl */}
       <div className="w-full space-y-8">
         
         <CampaignHeader 
@@ -138,7 +181,8 @@ const saveAllStockToDb = async () => {
               onSelect={(id: string) => { setSelectedStore(id); setActiveView('stock') }}
               campaignId={campaign?.id}
               campaignUrl={campaign?.campaign_url}
-              refreshStores={() => initPage()}
+              // CAMBIO CLAVE AQUÍ: En lugar de initPage, usamos refreshStoresBackground
+              refreshStores={(actionText: string) => refreshStoresBackground(actionText)}
             />
           </aside>
 

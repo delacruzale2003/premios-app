@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Upload, CheckCircle2, AlertCircle, Loader2, MapPin, Gift, Camera } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion' // NUEVO: Importamos Framer Motion
 
 export default function RegisterStorePage() {
   const params = useParams()
@@ -23,11 +24,19 @@ export default function RegisterStorePage() {
 
   // Estados de UI
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  
+  // NUEVO: Estado para los Toasts Flotantes (Reemplaza al antiguo 'error' estático)
+  const [toastMessage, setToastMessage] = useState<{ text: string, type: 'error' | 'loading' } | null>(null)
   
   // Estado de Éxito y Premio
   const [success, setSuccess] = useState(false)
   const [wonPrize, setWonPrize] = useState<{ name: string, image_url: string | null } | null>(null)
+
+  // NUEVO: Función auxiliar para mostrar Toasts de error temporalmente
+  const showErrorToast = (message: string) => {
+    setToastMessage({ text: message, type: 'error' })
+    setTimeout(() => setToastMessage(null), 4000) // Desaparece a los 4 segundos
+  }
 
   useEffect(() => {
     if (!storeId) return
@@ -62,7 +71,6 @@ export default function RegisterStorePage() {
         let width = img.width
         let height = img.height
         
-        // Reducido de 1200 a 800px. Más que suficiente para leer un texto impreso.
         const MAX_SIZE = 800 
         if (width > height && width > MAX_SIZE) {
           height *= MAX_SIZE / width
@@ -77,7 +85,6 @@ export default function RegisterStorePage() {
         const ctx = canvas.getContext('2d')
         ctx?.drawImage(img, 0, 0, width, height)
         
-        // Convertimos a WEBP con 60% de calidad (Súper ligero)
         canvas.toBlob((blob) => {
           if (blob) {
             const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".webp", {
@@ -96,7 +103,7 @@ export default function RegisterStorePage() {
 
   // --- VALIDACIÓN DE ARCHIVO AL SELECCIONAR ---
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setError('')
+    setToastMessage(null) // Limpiamos cualquier error previo
     const file = e.target.files?.[0]
     
     if (!file) {
@@ -104,13 +111,11 @@ export default function RegisterStorePage() {
       return
     }
 
-    // Lista blanca de formatos permitidos
     const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
     
     if (!validTypes.includes(file.type)) {
-      setError("Formato no permitido. Por favor sube una foto normal (JPG, PNG o HEIC).")
+      showErrorToast("Formato no permitido. Por favor sube una foto normal (JPG, PNG o HEIC).")
       setVoucherFile(null)
-      // Resetear el input file
       e.target.value = ''
       return
     }
@@ -120,20 +125,19 @@ export default function RegisterStorePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError('')
-    setLoading(true)
-
+    
     if (!fullName || !dni || !voucherFile) {
-      setError('Por favor, completa los campos obligatorios y toma la foto del voucher.')
-      setLoading(false)
+      showErrorToast('Por favor, completa los campos obligatorios y toma la foto del voucher.')
       return
     }
 
     if (dni.length < 8) {
-      setError('El DNI debe tener al menos 8 dígitos.')
-      setLoading(false)
+      showErrorToast('El DNI debe tener al menos 8 dígitos.')
       return
     }
+
+    setLoading(true)
+    setToastMessage({ text: 'Validando registro y subiendo foto...', type: 'loading' })
 
     try {
       // 1. ASIGNACIÓN SEGURA DE PREMIO
@@ -198,13 +202,14 @@ export default function RegisterStorePage() {
       if (assignedPrize) {
           setWonPrize({ name: assignedPrize.name, image_url: assignedPrize.image_url })
       }
+      
+      setToastMessage(null) // Quitamos el loading
       setSuccess(true)
 
     } catch (err: any) {
       console.error(err)
-      setError(err.message || 'Ocurrió un error inesperado al procesar el registro.')
-    } finally {
       setLoading(false)
+      showErrorToast(err.message || 'Ocurrió un error inesperado al procesar el registro.')
     }
   }
 
@@ -279,7 +284,32 @@ export default function RegisterStorePage() {
 
   // --- FORMULARIO ESTILO APPLE ---
   return (
-    <div className="min-h-screen bg-[#F5F5F7] dark:bg-black p-4 md:p-8 flex items-center justify-center font-sans">
+    <div className="min-h-screen bg-[#F5F5F7] dark:bg-black p-4 md:p-8 flex flex-col items-center justify-center font-sans relative">
+      
+      {/* NUEVO: TOAST FLOTANTE PARA ERRORES Y CARGA */}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div 
+            initial={{ opacity: 0, y: -50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.9 }}
+            className={`fixed top-8 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-3 px-5 py-3 rounded-full shadow-2xl border font-bold text-sm
+              ${toastMessage.type === 'error' 
+                ? 'bg-red-50 dark:bg-red-900 border-red-200 dark:border-red-800 text-red-600 dark:text-red-200' 
+                : 'bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-black dark:text-white'
+              }
+            `}
+          >
+            {toastMessage.type === 'loading' ? (
+              <Loader2 className="animate-spin text-blue-500" size={18} />
+            ) : (
+              <AlertCircle size={18} />
+            )}
+            {toastMessage.text}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="max-w-md w-full bg-white/70 dark:bg-zinc-900/70 backdrop-blur-2xl rounded-[2.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.5)] border border-white/50 dark:border-zinc-800 overflow-hidden">
         
         {/* Cabecera Clean */}
@@ -296,12 +326,7 @@ export default function RegisterStorePage() {
 
         <form onSubmit={handleSubmit} className="px-8 pb-10 space-y-5">
           
-          {error && (
-            <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-4 rounded-2xl text-sm flex items-start gap-3 font-medium">
-              <AlertCircle size={20} className="shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
+          {/* ELIMINADO: Bloque de error estático rojo (Reemplazado por el Toast) */}
 
           {/* INPUTS ESTILO IOS */}
           <div className="space-y-4">
@@ -374,7 +399,7 @@ export default function RegisterStorePage() {
             type="submit" disabled={loading}
             className="w-full mt-8 bg-blue-600 text-white font-bold text-xl py-4 rounded-full hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30"
           >
-            {loading ? <><Loader2 className="animate-spin" size={24} /> PROCESANDO...</> : 'Enviar y Participar'}
+            {loading ? <Loader2 className="animate-spin" size={24} /> : 'Enviar y Participar'}
           </button>
 
         </form>
