@@ -24,3 +24,40 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+/* --- ESTILOS PARA CUSTOM SCROLLBAR --- */
+
+/* Para navegadores basados en WebKit (Chrome, Edge, Safari) */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px; /* Muy delgado */
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent; /* Sin fondo (para que tome el color de tu sidebar) */
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #d4d4d8; /* Gris sutil (zinc-300) */
+  border-radius: 20px; /* Estilo pastilla / redondeado */
+  border: 2px solid transparent; /* Truco para que se vea aún más delgado */
+  background-clip: padding-box;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: #a1a1aa; /* Gris un poco más oscuro al pasar el mouse (zinc-400) */
+}
+
+/* Modo oscuro automático para el scrollbar */
+@media (prefers-color-scheme: dark) {
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: #3f3f46; /* zinc-700 para modo oscuro */
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: #52525b; /* zinc-600 al pasar el mouse en oscuro */
+  }
+}
+
+/* Para Firefox */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #d4d4d8 transparent;
+}

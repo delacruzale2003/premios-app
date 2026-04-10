@@ -8,7 +8,6 @@ import * as XLSX from 'xlsx'
 
 // Componentes Segmentados
 import CampaignHeader from '@/app/admin/components/CampaignHeader' 
-
 import StatsView from '@/app/admin/components/StatsView' 
 import StoreRegistrations from '@/app/admin/components/StoreRegistrations'
 import StoresSidebar from '@/app/admin/components/StoreSidebar'
@@ -65,7 +64,6 @@ const saveAllStockToDb = async () => {
     setIsSavingAll(true)
 
     const prizesToUpsert = templates.map(t => {
-      // Buscamos si este premio ya fue creado antes para esta tienda
       const existingPrize = prizes.find(p => p.name === t.name)
       
       const payload: any = {
@@ -75,20 +73,17 @@ const saveAllStockToDb = async () => {
         stock: parseInt(localStock[t.name] || '0'),
         image_url: t.image_url,
         is_active: true,
-        batch_number: 1 // <- NUEVO: Forzamos el batch 1 para estas tiendas
+        batch_number: 1
       }
 
-      // Si el premio ya existe, inyectamos su ID para que Supabase haga un UPDATE
       if (existingPrize) {
         payload.id = existingPrize.id
-        // Respetamos su batch original por si acaso ya tenía uno asignado en BD
         payload.batch_number = existingPrize.batch_number 
       }
 
       return payload
     }).filter(p => p.stock >= 0)
 
-    // Hacemos el upsert limpio, confiando en el Primary Key (id)
     const { error } = await supabase.from('prizes').upsert(prizesToUpsert)
 
     if (error) {
@@ -122,8 +117,11 @@ const saveAllStockToDb = async () => {
   if (loading) return <div className="min-h-screen bg-[#F5F5F7] flex items-center justify-center"><Loader2 className="animate-spin text-zinc-400" size={32} /></div>
 
   return (
-    <div className="min-h-screen bg-[#F5F5F7] dark:bg-black text-zinc-900 dark:text-zinc-100 p-4 sm:p-8 font-sans">
-      <div className="max-w-7xl mx-auto space-y-8">
+    // Removimos restricciones de ancho en el main container para que sea fluido
+    <div className="min-h-screen bg-[#F5F5F7] dark:bg-black text-zinc-900 dark:text-zinc-100 p-4 sm:p-8 font-sans w-full">
+      
+      {/* CAMBIO CLAVE AQUÍ: Cambiamos max-w-7xl por w-full */}
+      <div className="w-full space-y-8">
         
         <CampaignHeader 
           campaign={campaign} 
@@ -131,19 +129,20 @@ const saveAllStockToDb = async () => {
           isExporting={isExporting} 
         />
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          <aside className="lg:col-span-4">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 w-full">
+          
+          <aside className="lg:col-span-4 xl:col-span-3">
             <StoresSidebar 
-    stores={stores} 
-    selectedStore={selectedStore} 
-    onSelect={(id: string) => { setSelectedStore(id); setActiveView('stock') }}
-    campaignId={campaign?.id}
-    campaignUrl={campaign?.campaign_url} // <--- FALTA ESTA LÍNEA
-    refreshStores={() => initPage()}
-  />
+              stores={stores} 
+              selectedStore={selectedStore} 
+              onSelect={(id: string) => { setSelectedStore(id); setActiveView('stock') }}
+              campaignId={campaign?.id}
+              campaignUrl={campaign?.campaign_url}
+              refreshStores={() => initPage()}
+            />
           </aside>
 
-          <main className="lg:col-span-8 flex flex-col gap-6">
+          <main className="lg:col-span-8 xl:col-span-9 flex flex-col gap-6">
             {selectedStore ? (
               <>
                 <div className="flex justify-between items-center bg-zinc-200/50 dark:bg-zinc-800/50 p-1.5 rounded-2xl w-fit self-end shadow-inner">

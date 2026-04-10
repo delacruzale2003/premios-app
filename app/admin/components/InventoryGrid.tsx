@@ -1,59 +1,113 @@
-import { Image as ImageIcon, Save, Loader2 } from 'lucide-react'
+import { Image as ImageIcon, Save, Loader2, Package } from 'lucide-react'
+import { motion } from 'framer-motion'
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.05 }
+  }
+}
+
+const itemVariants = {
+  hidden: { opacity: 0, scale: 0.9, y: 10 },
+  show: { opacity: 1, scale: 1, y: 0, transition: { type: "spring" as const, stiffness: 300, damping: 24 } }
+}
 
 export default function InventoryGrid({ templates, prizes, localStock, onChange, onSave, isSaving, hasChanges }: any) {
+  
+  const totalStock = Object.values(localStock).reduce((acc, currentVal) => {
+    const num = parseInt(currentVal as string) || 0;
+    return (acc as number) + num;
+  }, 0)
+
   return (
     <div className="relative flex-1 flex flex-col">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 overflow-y-auto pb-24 custom-scrollbar px-1">
+      
+      {/* PANEL DE TOTAL (Más compacto) */}
+      <div className="mb-4 flex items-center justify-between bg-white dark:bg-zinc-900 p-3 sm:p-4 rounded-[1.5rem] border border-zinc-200 dark:border-zinc-800 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-blue-500/10 rounded-xl">
+            <Package size={20} className="text-blue-500" />
+          </div>
+          <div className="flex flex-col leading-tight">
+            <span className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Stock Global</span>
+            <span className="font-bold text-xs sm:text-sm text-zinc-900 dark:text-zinc-100">Total en esta tienda</span>
+          </div>
+        </div>
+        <div className="bg-zinc-100 dark:bg-black px-4 py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-800">
+          <span className="text-lg sm:text-xl font-black text-blue-600 dark:text-blue-400">
+            {totalStock as number}
+          </span>
+        </div>
+      </div>
+
+      {/* GRILLA COMPACTA ANIMADA (4 columnas en pantallas grandes) */}
+      <motion.div 
+        variants={containerVariants}
+        initial="hidden"
+        animate="show"
+        className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4 overflow-y-auto pb-24 custom-scrollbar px-1"
+      >
         {templates.map((template: any) => {
           const val = localStock[template.name] ?? ''
           
-          // ELIMINAMOS EL isLocked
-          // El usuario ahora tiene libertad total sobre el input
-
           return (
-            <div key={template.id} className="relative flex flex-col bg-white dark:bg-zinc-900 rounded-[2.5rem] border border-white dark:border-zinc-800 shadow-sm overflow-hidden transition-all duration-500 hover:shadow-2xl hover:-translate-y-1">
+            <motion.div 
+              variants={itemVariants}
+              key={template.id} 
+              className="relative flex flex-col bg-white dark:bg-zinc-900 rounded-[1.5rem] border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 group"
+            >
               
-              {/* IMAGE PREVIEW */}
-              <div className="aspect-[4/3] w-full bg-[#F5F5F7] dark:bg-black/40 p-6 flex items-center justify-center relative">
+              {/* IMAGE PREVIEW: Ahora es CUADRADA y recorta al centro (object-cover) */}
+              <div className="aspect-square w-full bg-zinc-100 dark:bg-zinc-950 flex items-center justify-center relative overflow-hidden border-b border-zinc-200 dark:border-zinc-800">
                 {template.image_url ? (
-                  <img src={template.image_url} alt={template.name} className="w-full h-full object-contain drop-shadow-2xl transition-transform duration-700 hover:scale-110" />
+                  <img 
+                    src={template.image_url} 
+                    alt={template.name} 
+                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
+                  />
                 ) : (
-                  <div className="text-zinc-300 dark:text-zinc-700 flex flex-col items-center gap-2">
-                    <ImageIcon size={48} />
-                    <span className="text-[10px] font-bold uppercase tracking-widest">Sin imagen</span>
+                  <div className="text-zinc-300 dark:text-zinc-700 flex flex-col items-center gap-1 opacity-50">
+                    <ImageIcon size={32} />
+                    <span className="text-[8px] font-bold uppercase tracking-widest">Sin imagen</span>
                   </div>
                 )}
               </div>
 
-              {/* INFO & INPUT */}
-              <div className="p-6 flex flex-col gap-4">
-                <h3 className="font-bold text-lg leading-tight line-clamp-2">{template.name}</h3>
+              {/* INFO & INPUT (Súper compacto) */}
+              <div className="p-3 flex flex-col gap-2">
+                <h3 className="font-bold text-xs leading-tight line-clamp-2 text-zinc-800 dark:text-zinc-200" title={template.name}>
+                  {template.name}
+                </h3>
                 
-                {/* Removimos la opacidad y los bloqueos condicionales */}
-                <div className="flex items-center justify-between dark:bg-black/50 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 px-4 py-3 transition-all focus-within:ring-2 focus-within:ring-blue-500/30 focus-within:bg-black">
-                  <span className="text-[10px] text-zinc-400 font-black uppercase tracking-widest">Stock</span>
+                {/* INPUT MEJORADO */}
+                <div className="flex items-center justify-between bg-zinc-100 dark:bg-black rounded-xl border border-zinc-300 dark:border-zinc-700 px-3 py-1.5 transition-all focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 focus-within:bg-white dark:focus-within:bg-zinc-900">
+                  <span className="text-[9px] text-zinc-500 font-black uppercase tracking-widest">Stock</span>
                   <input 
-                    type="number" min="0" 
-                    // Eliminado el disabled={isLocked}
-                    className="w-full bg-transparent font-bold text-xl outline-none text-right"
+                    type="number" 
+                    min="0" 
+                    // CLASE CLAVE: [&::-webkit-inner-spin-button]:appearance-none oculta las flechitas
+                    className="w-full bg-transparent font-black text-base text-black dark:text-white outline-none text-right [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                     value={val}
+                    placeholder="0"
                     onChange={(e) => onChange(template.name, e.target.value)}
                   />
                 </div>
               </div>
-            </div>
+            </motion.div>
           )
         })}
-      </div>
+      </motion.div>
 
-      {/* FLOATING SAVE BUTTON */}
+      {/* FLOATING SAVE BUTTON (Más pequeño) */}
       {hasChanges && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-10 fade-in duration-500">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-10 fade-in duration-500">
           <button 
             onClick={onSave} disabled={isSaving}
-            className="bg-black dark:bg-white text-white dark:text-black px-10 py-4 rounded-full font-black shadow-2xl flex items-center gap-3 active:scale-95 transition-all border border-white/10"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-full text-sm font-bold shadow-[0_10px_30px_rgba(37,99,235,0.4)] flex items-center gap-2 active:scale-95 transition-all"
           >
-            {isSaving ? <Loader2 className="animate-spin" size={20}/> : <><Save size={20} className="text-blue-500"/> Confirmar Inventario</>}
+            {isSaving ? <Loader2 className="animate-spin" size={16}/> : <><Save size={16} /> Guardar Inventario</>}
           </button>
         </div>
       )}
