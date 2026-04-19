@@ -40,6 +40,7 @@ export default function CampaignDashboard({ campaignId }: Props) {
 
   // Estado local para inputs de stock
   const [localStock, setLocalStock] = useState<Record<string, string>>({})
+  const [storeStocks, setStoreStocks] = useState<Record<string, number>>({})
   const [savingItems, setSavingItems] = useState<Record<string, boolean>>({})
 
   // Inputs para Nueva Tienda / Premios
@@ -57,6 +58,7 @@ export default function CampaignDashboard({ campaignId }: Props) {
       fetchCampaign()
       fetchTemplates()
       fetchStores()
+      fetchAllStocks()
       resetView()
     }
   }, [campaignId])
@@ -103,7 +105,25 @@ export default function CampaignDashboard({ campaignId }: Props) {
     
     if (data) setStores(data)
   }
+  // NUEVA FUNCIÓN: Cuenta todos los premios de la campaña actual
+  async function fetchAllStocks() {
+    if (!campaignId) return
+    
+    const { data } = await supabase
+      .from('prizes')
+      .select('store_id, stock')
+      .eq('campaign_id', campaignId)
+      .eq('is_active', true)
 
+    if (data) {
+      const stocks: Record<string, number> = {}
+      data.forEach(prize => {
+        if (!stocks[prize.store_id]) stocks[prize.store_id] = 0
+        stocks[prize.store_id] += prize.stock
+      })
+      setStoreStocks(stocks)
+    }
+  }
   async function fetchPrizes(storeId: string) {
     const { data } = await supabase.from('prizes').select('*').eq('store_id', storeId).eq('is_active', true)
     
@@ -279,7 +299,7 @@ export default function CampaignDashboard({ campaignId }: Props) {
     setLocalStock(prev => ({ ...prev, [templateName]: val }))
   }
 
-  const saveStockToDb = async (templateName: string) => {
+ const saveStockToDb = async (templateName: string) => {
     if (!selectedStore) return
     
     setSavingItems(prev => ({ ...prev, [templateName]: true }))
@@ -316,6 +336,9 @@ export default function CampaignDashboard({ campaignId }: Props) {
                 return [...prev, data]
             }
         })
+        
+        // <--- AÑADIR ESTO AQUÍ: Recalcula los totales globales de la barra lateral
+        fetchAllStocks() 
     }
   }
 
@@ -494,15 +517,34 @@ export default function CampaignDashboard({ campaignId }: Props) {
                   <button onClick={addStore} className="bg-zinc-900 dark:bg-white text-white dark:text-black p-2 rounded-xl hover:scale-105 transition-all"><Plus size={20}/></button>
               </div>
               <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                  {stores.map(s => (
-                      <div 
-                          key={s.id} onClick={() => setSelectedStore(s.id)}
-                          className={`group p-5 rounded-[2rem] cursor-pointer border text-sm font-black uppercase tracking-tighter flex justify-between items-center transition-all ${selectedStore === s.id ? 'bg-white border-white shadow-2xl dark:bg-zinc-800 text-blue-600 scale-[1.03]' : 'bg-transparent border-transparent text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'}`}
-                      >
-                          {s.name}
-                          <button onClick={(e) => { e.stopPropagation(); deleteStore(s.id) }} className="opacity-0 group-hover:opacity-100 text-zinc-300 hover:text-red-500 transition-all"><Trash2 size={16}/></button>
-                      </div>
-                  ))}
+                {stores.map(s => {
+    // Calculamos si tiene premios. Si storeStocks[s.id] es undefined, es 0.
+    const totalPrizes = storeStocks[s.id] || 0
+    
+    return (
+        <div 
+            key={s.id} onClick={() => setSelectedStore(s.id)}
+            className={`group p-4 rounded-[2rem] cursor-pointer border transition-all flex justify-between items-center ${selectedStore === s.id ? 'bg-white border-white shadow-2xl dark:bg-zinc-800 scale-[1.03]' : 'bg-transparent border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800/50'}`}
+        >
+            <div className="flex flex-col gap-0.5">
+                <span className={`text-sm font-black uppercase tracking-tighter ${selectedStore === s.id ? 'text-blue-600' : 'text-zinc-600 dark:text-zinc-300'}`}>
+                    {s.name}
+                </span>
+                {/* AQUI MOSTRAMOS EL STOCK */}
+                <div className="flex items-center gap-1.5 text-[10px] uppercase font-bold tracking-widest">
+                    <Gift size={12} className={totalPrizes > 0 ? "text-blue-500" : "text-zinc-400"} />
+                    <span className={totalPrizes > 0 ? "text-blue-600" : "text-zinc-400"}>
+                        {totalPrizes} {totalPrizes === 1 ? 'Premio' : 'Premios'}
+                    </span>
+                </div>
+            </div>
+            
+            <button onClick={(e) => { e.stopPropagation(); deleteStore(s.id) }} className="opacity-0 group-hover:opacity-100 text-zinc-300 hover:text-red-500 p-2 transition-all">
+                <Trash2 size={16}/>
+            </button>
+        </div>
+    )
+})}
               </div>
           </div>
         </div>

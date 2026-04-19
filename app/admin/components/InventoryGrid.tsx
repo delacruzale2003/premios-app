@@ -32,18 +32,17 @@ export default function InventoryGrid({ templates, prizes, localStock, onChange,
     return (acc as number) + num;
   }, 0)
 
-  // FUNCIÓN CLAVE: Comprime la imagen del premio desde Supabase
   const getThumbnailUrl = (fullUrl: string) => {
     if (!fullUrl) return ''
     if (fullUrl.includes('/storage/v1/object/public/')) {
-      // 200x200px es súper ligero y perfecto para la grilla
+      // 200x200px es súper ligero y perfecto para la grilla y la lista
       return fullUrl.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + '?width=200&height=200&resize=contain'
     }
     return fullUrl
   }
 
-  // Abstraemos el interior de la tarjeta para no repetir código
-  const renderCardContent = (template: any, val: string) => (
+  // DISEÑO DESKTOP: Tarjeta Cuadrada Grande
+  const renderDesktopCard = (template: any, val: string) => (
     <>
       <div className="aspect-square w-full bg-zinc-100 dark:bg-zinc-950 flex items-center justify-center relative overflow-hidden border-b border-zinc-200 dark:border-zinc-800">
         {template.image_url ? (
@@ -81,6 +80,44 @@ export default function InventoryGrid({ templates, prizes, localStock, onChange,
     </>
   )
 
+  // DISEÑO MÓVIL: Fila de Lista Compacta
+  const renderMobileRow = (template: any, val: string) => (
+    <div className="flex items-center gap-3 p-2.5">
+      {/* Miniatura Cuadrada Pequeña */}
+      <div className="w-12 h-12 shrink-0 bg-zinc-100 dark:bg-zinc-950 rounded-lg flex items-center justify-center overflow-hidden border border-zinc-200 dark:border-zinc-800">
+        {template.image_url ? (
+          <img 
+            src={getThumbnailUrl(template.image_url)} 
+            alt={template.name} 
+            loading="lazy"
+            className="w-full h-full object-cover" 
+          />
+        ) : (
+          <ImageIcon size={16} className="text-zinc-300 dark:text-zinc-700" />
+        )}
+      </div>
+
+      {/* Título truncado a 1 sola línea para ahorrar espacio */}
+      <div className="flex-1 min-w-0">
+        <h3 className="font-bold text-xs text-zinc-800 dark:text-zinc-200 truncate" title={template.name}>
+          {template.name}
+        </h3>
+      </div>
+      
+      {/* Input Compacto a la derecha */}
+      <div className="shrink-0 w-20 flex items-center justify-between bg-zinc-100 dark:bg-black rounded-lg border border-zinc-300 dark:border-zinc-700 px-2 py-1.5 focus-within:ring-2 focus-within:ring-blue-500 focus-within:bg-white dark:focus-within:bg-zinc-900 transition-all">
+        <input 
+          type="number" 
+          min="0" 
+          className="w-full bg-transparent font-black text-sm text-black dark:text-white outline-none text-center [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          value={val}
+          placeholder="0"
+          onChange={(e) => onChange(template.name, e.target.value)}
+        />
+      </div>
+    </div>
+  )
+
   return (
     <div className="relative flex-1 flex flex-col">
       
@@ -102,24 +139,24 @@ export default function InventoryGrid({ templates, prizes, localStock, onChange,
         </div>
       </div>
 
-      {/* GRILLA DIVIDIDA POR RENDIMIENTO */}
+      {/* RENDERIZADO CONDICIONAL POR DISPOSITIVO */}
       {isMobile ? (
-        // VERSIÓN MÓVIL: HTML Nativo, cero Framer Motion, máxima velocidad.
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 overflow-y-auto pb-24 custom-scrollbar px-1">
+        // VERSIÓN MÓVIL: Lista vertical delgada (Fila por fila)
+        <div className="flex flex-col gap-2 overflow-y-auto pb-24 custom-scrollbar px-1">
           {templates.map((template: any) => {
             const val = localStock[template.name] ?? ''
             return (
               <div 
                 key={template.id} 
-                className="relative flex flex-col bg-white dark:bg-zinc-900 rounded-[1.5rem] border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden"
+                className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden"
               >
-                {renderCardContent(template, val)}
+                {renderMobileRow(template, val)}
               </div>
             )
           })}
         </div>
       ) : (
-        // VERSIÓN DESKTOP: Animada y elegante
+        // VERSIÓN DESKTOP: Grilla Cuadrada Animada (Tarjetas grandes)
         <motion.div 
           variants={containerVariants}
           initial="hidden"
@@ -134,7 +171,7 @@ export default function InventoryGrid({ templates, prizes, localStock, onChange,
                 key={template.id} 
                 className="relative flex flex-col bg-white dark:bg-zinc-900 rounded-[1.5rem] border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 group"
               >
-                {renderCardContent(template, val)}
+                {renderDesktopCard(template, val)}
               </motion.div>
             )
           })}

@@ -34,13 +34,14 @@ export default function ClientSharedPage() {
   const [isSavingAll, setIsSavingAll] = useState(false)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
 
+  const [stockRefreshTrigger, setStockRefreshTrigger] = useState(0)
+
   const [toastMessage, setToastMessage] = useState<{ text: string, type: 'loading' | 'success' } | null>(null)
 
   // Detector de Móvil ligero
   const [isMobile, setIsMobile] = useState(false)
 
   useEffect(() => {
-    // Detectamos si es móvil al cargar para pasar esta info a los componentes hijos
     const checkMobile = () => setIsMobile(window.innerWidth < 768)
     checkMobile()
     window.addEventListener('resize', checkMobile)
@@ -89,6 +90,8 @@ export default function ClientSharedPage() {
     if (!selectedStore || !campaign) return
     setIsSavingAll(true)
 
+    console.log(`[TRACKING] Guardando inventario de la tienda ${selectedStore}...`)
+
     try {
       for (const t of templates) {
         const stockValue = parseInt(localStock[t.name] || '0')
@@ -98,6 +101,7 @@ export default function ClientSharedPage() {
         const existingPrize = prizes.find(p => p.name === t.name)
         
         if (existingPrize) {
+          console.log(`[TRACKING] Actualizando ${t.name}: ${stockValue}`)
           const { error } = await supabase
             .from('prizes')
             .update({
@@ -110,6 +114,7 @@ export default function ClientSharedPage() {
           if (error) throw error
           
         } else {
+          console.log(`[TRACKING] Insertando nuevo ${t.name}: ${stockValue}`)
           const { error } = await supabase
             .from('prizes')
             .insert({
@@ -128,10 +133,15 @@ export default function ClientSharedPage() {
 
       setToastMessage({ text: 'Inventario guardado', type: 'success' })
       setTimeout(() => setToastMessage(null), 2500)
+      
+      console.log(`[TRACKING] Recargando datos internos de la tienda...`)
       await fetchPrizes(selectedStore)
       
+      console.log(`[TRACKING] Disparando Trigger para actualizar Sidebar... (Valor anterior: ${stockRefreshTrigger})`)
+      setStockRefreshTrigger(prev => prev + 1)
+      
     } catch (error) {
-      console.error("Error guardando el stock:", error)
+      console.error("[TRACKING] Error guardando el stock:", error)
       alert("Hubo un error al guardar el inventario. Revisa la consola.")
     } finally {
       setIsSavingAll(false)
@@ -200,7 +210,8 @@ export default function ClientSharedPage() {
               campaignId={campaign?.id}
               campaignUrl={campaign?.campaign_url}
               refreshStores={(actionText: string) => refreshStoresBackground(actionText)}
-              isMobile={isMobile} // <- PASAMOS ESTA VARIABLE AL SIDEBAR
+              isMobile={isMobile}
+              stockRefreshTrigger={stockRefreshTrigger}
             />
           </aside>
 
@@ -228,10 +239,9 @@ export default function ClientSharedPage() {
                     onSave={saveAllStockToDb}
                     isSaving={isSavingAll}
                     hasChanges={hasUnsavedChanges}
-                    // Aunque en InventoryGrid calculamos isMobile internamente, no está de más pasarlo por si luego unificamos
                   />
                 )}
-                {/* CAMBIO CLAVE AQUÍ: Pasamos isMobile a los componentes que lo necesitan para apagar animaciones */}
+                
                 {activeView === 'registrations' && <StoreRegistrations storeId={selectedStore} />}
                 {activeView === 'stats' && <StatsView campaignId={campaign.id} />}
               </>

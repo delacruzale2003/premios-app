@@ -21,7 +21,10 @@ const itemVariants: Variants = {
 
 const ITEMS_PER_PAGE = 15
 
-export default function StoresSidebar({ stores, selectedStore, onSelect, campaignId, campaignUrl, refreshStores, isMobile }: any) {
+export default function StoresSidebar({ 
+  stores, selectedStore, onSelect, campaignId, campaignUrl, refreshStores, isMobile, 
+  stockRefreshTrigger
+}: any) {
   const [newStoreName, setNewStoreName] = useState('')
   const [copiedId, setCopiedId] = useState<string | null>(null)
   
@@ -32,28 +35,59 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE)
 
+  // ESTE EFECTO USA PAGINACIÓN PARA BURLAR EL LÍMITE DE 1000 FILAS DE SUPABASE
   useEffect(() => {
     const fetchAllStocks = async () => {
       if (!campaignId) return
       
-      const { data } = await supabase
-        .from('prizes')
-        .select('store_id, stock')
-        .eq('campaign_id', campaignId)
-        .eq('is_active', true)
+      console.log(`[TRACKING] Sidebar: Iniciando descarga en bloques para evitar el límite de 1000 filas...`)
+      
+      let allPrizes: any[] = [];
+      let hasMore = true;
+      let page = 0;
+      const pageSize = 1000; // Pedimos de 1000 en 1000
 
-      if (data) {
-        const stocks: Record<string, number> = {}
-        data.forEach(prize => {
-          if (!stocks[prize.store_id]) stocks[prize.store_id] = 0
-          stocks[prize.store_id] += prize.stock
-        })
-        setStoreStocks(stocks)
+      // Bucle que seguirá pidiendo datos hasta que Supabase diga que ya no hay más
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('prizes')
+          .select('store_id, stock')
+          .eq('campaign_id', campaignId)
+          .eq('is_active', true)
+          .range(page * pageSize, (page + 1) * pageSize - 1) // Paginación mágica
+
+        if (error) {
+          console.error(`[TRACKING] Sidebar: Error en el bloque ${page}:`, error)
+          break;
+        }
+
+        if (data && data.length > 0) {
+          allPrizes = [...allPrizes, ...data];
+          console.log(`[TRACKING] Sidebar: Descargados ${data.length} premios en el bloque ${page + 1}...`)
+          
+          if (data.length < pageSize) {
+            hasMore = false; // Si trae menos de 1000, ya terminamos
+          } else {
+            page++; // Si trae 1000 exactos, pedimos el siguiente bloque
+          }
+        } else {
+          hasMore = false;
+        }
       }
+
+      console.log(`[TRACKING] Sidebar: ¡Éxito! Total de premios sumados en memoria: ${allPrizes.length}`)
+
+      const stocks: Record<string, number> = {}
+      allPrizes.forEach(prize => {
+        if (!stocks[prize.store_id]) stocks[prize.store_id] = 0
+        stocks[prize.store_id] += prize.stock
+      })
+      
+      setStoreStocks(stocks)
     }
 
     fetchAllStocks()
-  }, [campaignId, stores]) 
+  }, [campaignId, stores, stockRefreshTrigger])
 
   useEffect(() => {
     setVisibleCount(ITEMS_PER_PAGE)
@@ -176,7 +210,6 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
         </button>
       </div>
 
-      {/* OPTIMIZACIÓN: Div estático en móvil, motion.div en desktop */}
       {isMobile ? (
         <div className="flex-1 overflow-y-auto px-1 space-y-2.5 custom-scrollbar pb-6">
           {filteredAndSortedStores.length === 0 ? (
@@ -210,7 +243,6 @@ export default function StoresSidebar({ stores, selectedStore, onSelect, campaig
                     </div>
                   </div>
                   
-                  {/* OPTIMIZACIÓN MÓVIL: Los botones solo aparecen si la tienda está seleccionada */}
                   {isSelected && (
                     <div className="flex items-center gap-1 absolute right-2">
                       
