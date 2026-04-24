@@ -238,11 +238,17 @@ export default function CampaignDashboard({ campaignId }: Props) {
     fetchTemplates()
   }
 
-  // 🔥 NUEVO RUTEADO: Copia el link apuntando a /adminv2/ (Lotes)
-  const copyClientLink = () => {
-    const link = `${window.location.origin}/adminv2/${campaign?.share_uuid}`
+  // 🔥 NUEVO: Función única para copiar ambos links
+  const copyClientLink = (type: 'share' | 'adminv2') => {
+    if (!campaign?.share_uuid) {
+      alert("La campaña aún no tiene un UUID válido.");
+      return;
+    }
+    const link = `${window.location.origin}/${type}/${campaign.share_uuid}`
     navigator.clipboard.writeText(link)
-    alert('Link copiado: ' + link)
+    
+    const typeName = type === 'share' ? 'Gestión Rápida (Sin Lotes)' : 'Gestión Avanzada (Lotes)'
+    alert(`Link de ${typeName} copiado:\n${link}`)
   }
 
   // --- ACTIONS: STORES ---
@@ -355,24 +361,29 @@ export default function CampaignDashboard({ campaignId }: Props) {
           <div>
             <div className="flex items-center gap-3 mb-4 text-amber-700 dark:text-amber-300 font-black uppercase tracking-tighter text-xl">
               <div className="bg-amber-500 text-white p-2 rounded-2xl shadow-lg shadow-amber-500/30">
-                <Plus size={20}/>
+                <LinkIcon size={20}/>
               </div>
-              Link de Gestión Lotes
+              Links de Socios
             </div>
-            <p className="text-xs text-amber-600/80 dark:text-amber-400 mb-6 font-semibold leading-relaxed">
-                Comparte este link con el cliente para que pueda **gestionar el stock por lotes** sin entrar al panel administrativo central.
+            <p className="text-xs text-amber-600/80 dark:text-amber-400 font-semibold leading-relaxed">
+                Selecciona la modalidad de inventario que compartiras con tu cliente o promotor para que gestione el stock.
             </p>
-            <div className="bg-white/80 dark:bg-black/40 backdrop-blur-md p-4 rounded-3xl border border-amber-200/50 dark:border-amber-900/50 break-all text-[11px] font-mono mb-6 text-amber-900 dark:text-amber-100 shadow-inner">
-                {/* 🔥 ACTUALIZADO PARA MOSTRAR /adminv2/ */}
-                {typeof window !== 'undefined' ? `${window.location.origin}/adminv2/${campaign?.share_uuid}` : 'Cargando...'}
-            </div>
           </div>
-          <button 
-            onClick={copyClientLink}
-            className="flex items-center justify-center gap-3 bg-amber-500 hover:bg-amber-600 text-white px-6 py-4 rounded-2xl text-sm font-black transition-all active:scale-95 shadow-xl shadow-amber-600/20 uppercase tracking-tighter"
-          >
-            <Copy size={18}/> Copiar Link de Socio
-          </button>
+          
+          <div className="space-y-3 mt-6 relative z-10">
+            <button 
+              onClick={() => copyClientLink('share')}
+              className="w-full flex items-center justify-center gap-3 bg-white dark:bg-black text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 border border-amber-200 dark:border-amber-800 px-6 py-3.5 rounded-2xl text-sm font-black transition-all active:scale-95 shadow-sm uppercase tracking-tighter"
+            >
+              <Copy size={16}/> Copiar (Rápida / Sin Lotes)
+            </button>
+            <button 
+              onClick={() => copyClientLink('adminv2')}
+              className="w-full flex items-center justify-center gap-3 bg-amber-500 hover:bg-amber-600 text-white px-6 py-3.5 rounded-2xl text-sm font-black transition-all active:scale-95 shadow-xl shadow-amber-600/20 uppercase tracking-tighter"
+            >
+              <Copy size={16}/> Copiar (Avanzada / Lotes)
+            </button>
+          </div>
         </div>
 
         {/* PANEL: Programación de Horarios */}
