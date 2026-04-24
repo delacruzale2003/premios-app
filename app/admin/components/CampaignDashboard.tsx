@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import { QRCodeCanvas } from 'qrcode.react'
 import { 
   Plus, 
   Copy, 
@@ -13,7 +14,10 @@ import {
   Save, 
   ImagePlus, 
   Loader2,
-  CalendarClock 
+  CalendarClock,
+  Download,
+  Link as LinkIcon,
+  Check
 } from 'lucide-react'
 
 // --- CONFIGURACIÓN DE SUPABASE ---
@@ -32,6 +36,9 @@ export default function CampaignDashboard({ campaignId }: Props) {
   const [templates, setTemplates] = useState<any[]>([]) 
   const [campaign, setCampaign] = useState<any>(null)
   const [selectedStore, setSelectedStore] = useState<string>('')
+  
+  // Estado para el copiado de links de tiendas
+  const [copiedId, setCopiedId] = useState<string | null>(null)
 
   // Estados para Programación (Scheduling)
   const [startAt, setStartAt] = useState('')
@@ -105,10 +112,9 @@ export default function CampaignDashboard({ campaignId }: Props) {
     
     if (data) setStores(data)
   }
-  // NUEVA FUNCIÓN: Cuenta todos los premios de la campaña actual
+
   async function fetchAllStocks() {
     if (!campaignId) return
-    
     const { data } = await supabase
       .from('prizes')
       .select('store_id, stock')
@@ -124,9 +130,9 @@ export default function CampaignDashboard({ campaignId }: Props) {
       setStoreStocks(stocks)
     }
   }
+
   async function fetchPrizes(storeId: string) {
     const { data } = await supabase.from('prizes').select('*').eq('store_id', storeId).eq('is_active', true)
-    
     if (data) {
       setPrizes(data)
       const initialStock: Record<string, string> = {}
@@ -161,7 +167,6 @@ export default function CampaignDashboard({ campaignId }: Props) {
         alert("Debes ingresar un nombre y seleccionar una imagen para el premio.")
         return
     }
-
     setIsUploadingTemplate(true)
 
     try {
@@ -169,16 +174,10 @@ export default function CampaignDashboard({ campaignId }: Props) {
         const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`
         const filePath = `${campaignId}/${fileName}`
 
-        const { error: uploadError } = await supabase.storage
-            .from('prize_images')
-            .upload(filePath, newTemplateImage)
-
+        const { error: uploadError } = await supabase.storage.from('prize_images').upload(filePath, newTemplateImage)
         if (uploadError) throw new Error("Error al subir la imagen.")
 
-        const { data: publicUrlData } = supabase.storage
-            .from('prize_images')
-            .getPublicUrl(filePath)
-
+        const { data: publicUrlData } = supabase.storage.from('prize_images').getPublicUrl(filePath)
         const imageUrl = publicUrlData.publicUrl
 
         const { error: insertError } = await supabase.from('prize_templates').insert({ 
@@ -201,48 +200,27 @@ export default function CampaignDashboard({ campaignId }: Props) {
     }
   }
 
-  // NUEVA FUNCIÓN: Actualizar Imagen en Cascada (Template -> Prizes)
   const updateTemplateImage = async (templateId: string, templateName: string, file: File) => {
     setUpdatingTemplateId(templateId)
     try {
-      // 1. Subir la nueva imagen
       const fileExt = file.name.split('.').pop()
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`
       const filePath = `${campaignId}/${fileName}`
 
-      const { error: uploadError } = await supabase.storage
-        .from('prize_images')
-        .upload(filePath, file)
-
+      const { error: uploadError } = await supabase.storage.from('prize_images').upload(filePath, file)
       if (uploadError) throw new Error("Error al subir la nueva imagen.")
 
-      // 2. Obtener nueva URL
-      const { data: publicUrlData } = supabase.storage
-        .from('prize_images')
-        .getPublicUrl(filePath)
-
+      const { data: publicUrlData } = supabase.storage.from('prize_images').getPublicUrl(filePath)
       const newImageUrl = publicUrlData.publicUrl
 
-      // 3. Actualizar la tabla 'prize_templates' (El Maestro)
-      const { error: updateTmplError } = await supabase
-        .from('prize_templates')
-        .update({ image_url: newImageUrl })
-        .eq('id', templateId)
-
+      const { error: updateTmplError } = await supabase.from('prize_templates').update({ image_url: newImageUrl }).eq('id', templateId)
       if (updateTmplError) throw updateTmplError
 
-      // 4. ACTUALIZACIÓN EN CASCADA: Actualizar todos los 'prizes' que compartan este nombre en esta campaña
-      const { error: updatePrizesError } = await supabase
-        .from('prizes')
-        .update({ image_url: newImageUrl })
-        .eq('campaign_id', campaignId)
-        .eq('name', templateName)
-
+      const { error: updatePrizesError } = await supabase.from('prizes').update({ image_url: newImageUrl }).eq('campaign_id', campaignId).eq('name', templateName)
       if (updatePrizesError) throw updatePrizesError
 
       alert(`Imagen de "${templateName}" actualizada en la base y en todas las tiendas exitosamente.`)
       
-      // 5. Refrescar vistas
       fetchTemplates()
       if (selectedStore) fetchPrizes(selectedStore)
 
@@ -260,8 +238,9 @@ export default function CampaignDashboard({ campaignId }: Props) {
     fetchTemplates()
   }
 
+  // 🔥 NUEVO RUTEADO: Copia el link apuntando a /adminv2/ (Lotes)
   const copyClientLink = () => {
-    const link = `${window.location.origin}/share/${campaign?.share_uuid}`
+    const link = `${window.location.origin}/adminv2/${campaign?.share_uuid}`
     navigator.clipboard.writeText(link)
     alert('Link copiado: ' + link)
   }
@@ -282,9 +261,7 @@ export default function CampaignDashboard({ campaignId }: Props) {
     if (!confirmDelete) return
 
     const { error } = await supabase.from('stores').update({ is_active: false }).eq('id', id)
-    
     if (error) {
-        console.error("Error al eliminar tienda:", error)
         alert("Error al eliminar. Revisa la consola o permisos.")
         return
     }
@@ -294,19 +271,44 @@ export default function CampaignDashboard({ campaignId }: Props) {
     fetchStores()
   }
 
-  // --- ACTIONS: STOCK MANAGEMENT ---
+  // --- ACTIONS: LINKS Y QR DE TIENDAS ---
+  const getStoreLink = (id: string) => {
+    const baseDomain = (campaign?.campaign_url || 'fanta.ptm.pe').replace('https://', '').replace('www.', '')
+    return `${baseDomain}/registro/${id}`
+  }
+
+  const handleCopyLink = (e: any, id: string) => {
+    e.stopPropagation()
+    const fullUrl = `https://${getStoreLink(id)}`
+    navigator.clipboard.writeText(fullUrl)
+    setCopiedId(id)
+    setTimeout(() => setCopiedId(null), 2000)
+  }
+
+  const downloadQr = (e: any, store: any) => {
+    e.stopPropagation()
+    const canvas = document.getElementById(`qr-${store.id}`) as HTMLCanvasElement
+    if (!canvas) return
+    const pngUrl = canvas.toDataURL("image/png").replace("image/png", "image/octet-stream")
+    const downloadLink = document.createElement("a")
+    downloadLink.href = pngUrl
+    downloadLink.download = `QR_${store.name.replace(/\s+/g, '_')}.png`
+    document.body.appendChild(downloadLink)
+    downloadLink.click()
+    document.body.removeChild(downloadLink)
+  }
+
+  // --- ACTIONS: STOCK MANAGEMENT (Convencional) ---
   const handleLocalStockChange = (templateName: string, val: string) => {
     setLocalStock(prev => ({ ...prev, [templateName]: val }))
   }
 
  const saveStockToDb = async (templateName: string) => {
     if (!selectedStore) return
-    
     setSavingItems(prev => ({ ...prev, [templateName]: true }))
 
     const valStr = localStock[templateName]
     const stockVal = valStr && valStr !== '' ? parseInt(valStr) : 0
-
     const templateRef = templates.find(t => t.name === templateName)
 
     const { data, error } = await supabase
@@ -336,8 +338,6 @@ export default function CampaignDashboard({ campaignId }: Props) {
                 return [...prev, data]
             }
         })
-        
-        // <--- AÑADIR ESTO AQUÍ: Recalcula los totales globales de la barra lateral
         fetchAllStocks() 
     }
   }
@@ -357,13 +357,14 @@ export default function CampaignDashboard({ campaignId }: Props) {
               <div className="bg-amber-500 text-white p-2 rounded-2xl shadow-lg shadow-amber-500/30">
                 <Plus size={20}/>
               </div>
-              Link de Gestión
+              Link de Gestión Lotes
             </div>
             <p className="text-xs text-amber-600/80 dark:text-amber-400 mb-6 font-semibold leading-relaxed">
-                Comparte este link con el cliente para que pueda **gestionar el stock** de sus tiendas sin entrar al panel administrativo.
+                Comparte este link con el cliente para que pueda **gestionar el stock por lotes** sin entrar al panel administrativo central.
             </p>
             <div className="bg-white/80 dark:bg-black/40 backdrop-blur-md p-4 rounded-3xl border border-amber-200/50 dark:border-amber-900/50 break-all text-[11px] font-mono mb-6 text-amber-900 dark:text-amber-100 shadow-inner">
-                {typeof window !== 'undefined' ? `${window.location.origin}/share/${campaign?.share_uuid}` : 'Cargando...'}
+                {/* 🔥 ACTUALIZADO PARA MOSTRAR /adminv2/ */}
+                {typeof window !== 'undefined' ? `${window.location.origin}/adminv2/${campaign?.share_uuid}` : 'Cargando...'}
             </div>
           </div>
           <button 
@@ -518,44 +519,53 @@ export default function CampaignDashboard({ campaignId }: Props) {
               </div>
               <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
                 {stores.map(s => {
-    // Calculamos si tiene premios. Si storeStocks[s.id] es undefined, es 0.
-    const totalPrizes = storeStocks[s.id] || 0
-    
-    return (
-        <div 
-            key={s.id} onClick={() => setSelectedStore(s.id)}
-            className={`group p-4 rounded-[2rem] cursor-pointer border transition-all flex justify-between items-center ${selectedStore === s.id ? 'bg-white border-white shadow-2xl dark:bg-zinc-800 scale-[1.03]' : 'bg-transparent border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800/50'}`}
-        >
-            <div className="flex flex-col gap-0.5">
-                <span className={`text-sm font-black uppercase tracking-tighter ${selectedStore === s.id ? 'text-blue-600' : 'text-zinc-600 dark:text-zinc-300'}`}>
-                    {s.name}
-                </span>
-                {/* AQUI MOSTRAMOS EL STOCK */}
-                <div className="flex items-center gap-1.5 text-[10px] uppercase font-bold tracking-widest">
-                    <Gift size={12} className={totalPrizes > 0 ? "text-blue-500" : "text-zinc-400"} />
-                    <span className={totalPrizes > 0 ? "text-blue-600" : "text-zinc-400"}>
-                        {totalPrizes} {totalPrizes === 1 ? 'Premio' : 'Premios'}
-                    </span>
-                </div>
-            </div>
-            
-            <button onClick={(e) => { e.stopPropagation(); deleteStore(s.id) }} className="opacity-0 group-hover:opacity-100 text-zinc-300 hover:text-red-500 p-2 transition-all">
-                <Trash2 size={16}/>
-            </button>
-        </div>
-    )
-})}
+                    const totalPrizes = storeStocks[s.id] || 0
+                    return (
+                        <div 
+                            key={s.id} onClick={() => setSelectedStore(s.id)}
+                            className={`group p-4 rounded-[2rem] cursor-pointer border transition-all flex justify-between items-center ${selectedStore === s.id ? 'bg-white border-white shadow-2xl dark:bg-zinc-800 scale-[1.03]' : 'bg-transparent border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800/50'}`}
+                        >
+                            <div className="flex flex-col gap-0.5">
+                                <span className={`text-sm font-black uppercase tracking-tighter ${selectedStore === s.id ? 'text-blue-600' : 'text-zinc-600 dark:text-zinc-300'}`}>
+                                    {s.name}
+                                </span>
+                                <div className="flex items-center gap-1.5 text-[10px] uppercase font-bold tracking-widest">
+                                    <Gift size={12} className={totalPrizes > 0 ? "text-blue-500" : "text-zinc-400"} />
+                                    <span className={totalPrizes > 0 ? "text-blue-600" : "text-zinc-400"}>
+                                        {totalPrizes} {totalPrizes === 1 ? 'Premio' : 'Premios'}
+                                    </span>
+                                </div>
+                            </div>
+                            
+                            {/* 🔥 BOTONES DE ACCIÓN PARA LA TIENDA (Copiar, Descargar, Borrar) */}
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                <button onClick={(e) => downloadQr(e, s)} className="p-2 text-zinc-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-all" title="Descargar QR">
+                                    <Download size={16} />
+                                </button>
+                                <button onClick={(e) => handleCopyLink(e, s.id)} className="p-2 text-zinc-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-all" title="Copiar Link">
+                                    {copiedId === s.id ? <Check size={16} className="text-green-500"/> : <LinkIcon size={16} />}
+                                </button>
+                                <button onClick={(e) => { e.stopPropagation(); deleteStore(s.id) }} className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all" title="Eliminar">
+                                    <Trash2 size={16}/>
+                                </button>
+                                <div className="hidden">
+                                    <QRCodeCanvas id={`qr-${s.id}`} value={`https://${getStoreLink(s.id)}`} size={1024} level={"M"} marginSize={1} bgColor={"#ffffff"} fgColor={"#000000"} />
+                                </div>
+                            </div>
+                        </div>
+                    )
+                })}
               </div>
           </div>
         </div>
 
-        {/* COLUMNA DERECHA: Gestión de Stock */}
+        {/* COLUMNA DERECHA: Gestión de Stock Rápida (Sin Lotes) */}
         <div className="lg:col-span-8 bg-white dark:bg-zinc-900 p-10 rounded-[4rem] border border-zinc-100 dark:border-zinc-800 shadow-sm flex flex-col h-full overflow-hidden relative">
             {selectedStore ? (
                 <>
                     <div className="mb-10 flex justify-between items-end">
                         <div className="space-y-1">
-                            <span className="text-[11px] font-black uppercase text-purple-500 tracking-[0.3em]">Inventario Activo</span>
+                            <span className="text-[11px] font-black uppercase text-purple-500 tracking-[0.3em]">Gestión Rápida</span>
                             <h3 className="font-black text-4xl uppercase tracking-tighter leading-none">
                               {stores.find(s=>s.id === selectedStore)?.name}
                             </h3>
@@ -617,7 +627,7 @@ export default function CampaignDashboard({ campaignId }: Props) {
                     </div>
                     <div className="text-center space-y-2">
                       <p className="text-2xl font-black uppercase tracking-tighter text-zinc-400">Selecciona una sucursal</p>
-                      <p className="text-xs font-bold uppercase tracking-[0.3em] text-zinc-300">Para iniciar la gestión de stock</p>
+                      <p className="text-xs font-bold uppercase tracking-[0.3em] text-zinc-300">Para iniciar la gestión rápida</p>
                     </div>
                 </div>
             )}
