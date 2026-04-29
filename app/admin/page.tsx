@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Plus, ArrowLeft, ChevronDown, Globe, LayoutDashboard, Lock, User, LogIn } from 'lucide-react'
+import { Plus, ArrowLeft, ChevronDown, Globe, LayoutDashboard, Lock, User, LogIn, Activity } from 'lucide-react'
 import Link from 'next/link'
 import CampaignDashboard from './components/CampaignDashboard'
 
@@ -125,12 +125,16 @@ export default function AdminPage() {
   }
 
   // --- RENDER ADMIN CONTENT ---
-  const activeCampaignName = campaigns.find(c => c.id === selectedCampaign)?.name
+  const activeCampaign = campaigns.find(c => c.id === selectedCampaign)
+  const activeCampaignName = activeCampaign?.name
+  const activeCampaignUuid = activeCampaign?.share_uuid
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 font-sans text-zinc-900 dark:text-zinc-100 p-4 md:p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Tu código original del Header ... */}
+    // CAMBIO 1: Ajustamos el padding general para que en PC tenga más espacio lateral (lg:p-8 xl:px-12)
+    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 font-sans text-zinc-900 dark:text-zinc-100 p-4 sm:p-6 lg:p-8 xl:px-12">
+      
+      {/* CAMBIO 2: Cambiamos max-w-7xl por w-full max-w-[1920px] para ocupar todo el ancho real */}
+      <div className="w-full max-w-[1920px] mx-auto">
         <header className="mb-6 md:mb-8 border-b border-zinc-200 dark:border-zinc-800 pb-6">
           <div className="flex justify-between items-center mb-4">
             <Link href="/" className="text-sm font-medium text-zinc-500 hover:text-black dark:hover:text-white flex items-center gap-1">
@@ -138,7 +142,6 @@ export default function AdminPage() {
             </Link>
             
             <div className="flex items-center gap-4">
-               {/* Botón para desloguearse opcional */}
                <button 
                 onClick={() => { sessionStorage.clear(); setIsAuthenticated(false); }}
                 className="text-[10px] font-black uppercase text-zinc-400 hover:text-red-500 transition-colors"
@@ -154,7 +157,7 @@ export default function AdminPage() {
             </div>
           </div>
 
-          <div className="flex flex-col lg:flex-row gap-6 items-start lg:items-end justify-between">
+          <div className="flex flex-col xl:flex-row gap-6 items-start xl:items-end justify-between">
             <div>
               <h1 className="text-2xl md:text-3xl font-black tracking-tight mb-1">
                 {activeCampaignName ? `Editando: ${activeCampaignName}` : 'Panel de Gestión'}
@@ -162,12 +165,14 @@ export default function AdminPage() {
               <p className="text-zinc-500 text-sm md:text-base">Control total de campañas, sucursales y stock.</p>
             </div>
 
-            <div className="flex flex-col md:flex-row gap-3 w-full lg:w-auto items-stretch md:items-center">
-              <div className="relative">
+            <div className="flex flex-col md:flex-row gap-3 w-full xl:w-auto items-stretch md:items-center">
+              
+              {/* SELECTOR DE CAMPAÑAS */}
+              <div className="relative flex-1 md:flex-none">
                 <select 
                   value={selectedCampaign}
                   onChange={(e) => setSelectedCampaign(e.target.value)}
-                  className="appearance-none w-full md:w-[240px] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-sm font-bold rounded-2xl pl-4 pr-10 py-3 outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm transition-all cursor-pointer"
+                  className="appearance-none w-full md:w-[260px] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-sm font-bold rounded-2xl pl-4 pr-10 py-3 outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm transition-all cursor-pointer"
                 >
                   <option value="">Seleccionar Campaña...</option>
                   {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -177,28 +182,40 @@ export default function AdminPage() {
                 </div>
               </div>
 
+              {/* BOTÓN VER ANALÍTICAS */}
+              {activeCampaignUuid && (
+                <Link 
+                  href={`/analytics/${activeCampaignUuid}`}
+                  target="_blank"
+                  className="flex items-center justify-center gap-2 bg-blue-50 text-blue-600 border border-blue-100 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-900/30 px-5 py-3 rounded-2xl text-sm font-black uppercase tracking-tighter hover:bg-blue-100 dark:hover:bg-blue-900/40 active:scale-95 transition-all animate-in fade-in slide-in-from-left-4 shrink-0"
+                >
+                  <Activity size={16} /> Analíticas
+                </Link>
+              )}
+
               <div className="hidden md:block w-px h-8 bg-zinc-200 dark:border-zinc-800 mx-1"></div>
 
+              {/* CREACIÓN DE CAMPAÑA */}
               <div className="flex flex-col sm:flex-row gap-2 bg-zinc-100 dark:bg-zinc-900/50 p-1.5 rounded-[1.5rem] border border-zinc-200 dark:border-zinc-800">
                   <input 
                     placeholder="Nombre" 
                     value={newCampaignName}
                     onChange={e => setNewCampaignName(e.target.value)}
-                    className="bg-white dark:bg-zinc-900 px-4 py-2 text-sm rounded-xl outline-none w-full sm:w-40"
+                    className="bg-white dark:bg-zinc-900 px-4 py-2 text-sm rounded-xl outline-none w-full sm:w-48"
                   />
-                  <div className="relative flex items-center bg-white dark:bg-zinc-900 rounded-xl border border-transparent px-2">
-                    <Globe size={14} className="text-zinc-400 mr-1"/>
+                  <div className="relative flex items-center bg-white dark:bg-zinc-900 rounded-xl border border-transparent px-2 flex-1 sm:flex-none">
+                    <Globe size={14} className="text-zinc-400 mr-1 shrink-0"/>
                     <input 
                       placeholder="subdominio" 
                       value={newCampaignSubdomain}
                       onChange={e => setNewCampaignSubdomain(e.target.value.toLowerCase().replace(/\s+/g, ''))}
-                      className="bg-transparent py-2 text-sm outline-none w-full sm:w-24 font-medium"
+                      className="bg-transparent py-2 text-sm outline-none w-full sm:w-28 font-medium"
                     />
-                    <span className="text-zinc-400 text-[10px] font-bold">.ptm.pe</span>
+                    <span className="text-zinc-400 text-[10px] font-bold shrink-0">.ptm.pe</span>
                   </div>
                   <button 
                     onClick={addCampaign} 
-                    className="bg-blue-600 text-white p-2 rounded-xl"
+                    className="bg-blue-600 text-white p-2 flex items-center justify-center rounded-xl shrink-0 hover:bg-blue-700 transition-colors"
                   >
                     <Plus size={18} strokeWidth={3} />
                   </button>
