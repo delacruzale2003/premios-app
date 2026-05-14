@@ -14,10 +14,12 @@ import {
   Activity,
   RefreshCcw,
   Repeat,
-  Clock
+  Clock,
+  Smartphone // Ícono para los dispositivos
 } from 'lucide-react'
 import { 
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell 
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+  PieChart, Pie // NUEVO: Importamos PieChart
 } from 'recharts'
 
 // --- CONFIGURACIÓN DE SUPABASE ---
@@ -34,6 +36,16 @@ const containerVariants: Variants = {
 const itemVariants: Variants = {
   hidden: { opacity: 0, y: 20 },
   show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
+}
+
+// --- COLORES PARA EL GRÁFICO DE ANILLO (Dispositivos) ---
+const DEVICE_COLORS: Record<string, string> = {
+  'iOS': '#000000',           // Negro Apple
+  'Android': '#34c759',       // Verde Android
+  'Mac': '#86868b',           // Gris Mac
+  'Windows PC': '#0071e3',    // Azul Windows
+  'Windows Phone': '#a855f7', // Púrpura (por si acaso)
+  'Desconocido': '#e4e4e7'    // Gris claro
 }
 
 // --- CUSTOM Y-AXIS TICK (Para las Píldoras de Tiendas) ---
@@ -87,7 +99,6 @@ export default function ClientAnalyticsDashboard() {
     else setLoading(true)
 
     try {
-      // 1. Obtener Campaña
       const { data: camp, error: campError } = await supabase
         .from('campaigns')
         .select('*')
@@ -97,7 +108,6 @@ export default function ClientAnalyticsDashboard() {
       if (campError || !camp) throw new Error("Campaña no encontrada")
       setCampaign(camp)
 
-      // 2. Obtener Tiendas y Premios (cantidades normales)
       const [storesRes, prizesRes] = await Promise.all([
         supabase.from('stores').select('id, name').eq('campaign_id', camp.id),
         supabase.from('prizes').select('id, stock').eq('campaign_id', camp.id)
@@ -106,7 +116,6 @@ export default function ClientAnalyticsDashboard() {
       setStores(storesRes.data || [])
       setPrizes(prizesRes.data || [])
 
-      // 3. DESCARGA RECURSIVA
       let allRegs: any[] = [];
       let hasMoreRegs = true;
       let page = 0;
@@ -115,8 +124,8 @@ export default function ClientAnalyticsDashboard() {
       while (hasMoreRegs) {
         const { data: regData, error: regError } = await supabase
           .from('registrations')
-          // Añadimos 'phone' y 'dni' para el filtro avanzado de recurrencia
-          .select('id, created_at, store_id, phone, dni') 
+          // NUEVO: Agregamos device_os al select
+          .select('id, created_at, store_id, phone, dni, device_os') 
           .eq('campaign_id', camp.id)
           .range(page * pageSize, (page + 1) * pageSize - 1)
 
@@ -145,27 +154,22 @@ export default function ClientAnalyticsDashboard() {
   }
 
   // --- PROCESAMIENTO DE DATOS ---
-  
   const totalRegistrations = registrations.length
   const currentStock = prizes.reduce((acc, curr) => acc + (curr.stock || 0), 0)
   const totalStores = stores.length
 
-  // NUEVO: KPI de Recurrencia Auditando la "Trampa" del DNI
   const recurrenceRate = useMemo(() => {
     if (totalRegistrations === 0) return 0
     
     const uniqueIdentifiers = new Set()
 
     registrations.forEach(r => {
-      let identifier = r.phone || r.id; // Por defecto el teléfono (o ID si no hay nada)
+      let identifier = r.phone || r.id; 
 
       if (r.dni && r.dni !== 'N/A') {
         let cleanDni = r.dni.trim();
-        // Si el DNI tiene más de 8 caracteres (la trampa del promotor)
         if (cleanDni.length > 8) {
-          // Expresión Regular: Elimina todos los '0' y '1' seguidos al inicio (^) o al final ($)
           const coreDni = cleanDni.replace(/^[01]+|[01]+$/g, '');
-          // Usamos el DNI limpio solo si logramos rescatar el núcleo (por seguridad)
           identifier = coreDni.length >= 8 ? coreDni : cleanDni;
         } else {
           identifier = cleanDni;
@@ -178,7 +182,6 @@ export default function ClientAnalyticsDashboard() {
     return ((repeatedPlays / totalRegistrations) * 100).toFixed(1)
   }, [registrations, totalRegistrations])
 
-  // Gráfico 1: Registros por Día
   const chartDataRegistrations = useMemo(() => {
     const last7Days = [...Array(7)].map((_, i) => {
       const d = new Date()
@@ -206,7 +209,6 @@ export default function ClientAnalyticsDashboard() {
     }))
   }, [registrations])
 
-  // Gráfico 2: Top 5 Tiendas
   const topStoresData = useMemo(() => {
     const counts = registrations.reduce((acc, reg) => {
       if (reg.store_id) {
@@ -227,7 +229,6 @@ export default function ClientAnalyticsDashboard() {
       .slice(0, 5) 
   }, [registrations, stores])
 
-  // Gráfico 3: Mapa de Calor por Horas
   const heatMapData = useMemo(() => {
     const timeRanges = {
       'Madrugada (00-06)': 0,
@@ -256,6 +257,28 @@ export default function ClientAnalyticsDashboard() {
   }, [registrations])
 
   const getMaxHeatmapValue = () => Math.max(...heatMapData.map(d => d.Registros))
+
+  // NUEVO: Procesamiento de datos de Dispositivos (Solo registros recientes que tengan el dato)
+  const deviceData = useMemo(() => {
+    // Filtramos solo los registros que tienen un device_os guardado
+    const regsWithOS = registrations.filter(r => r.device_os);
+    
+    if (regsWithOS.length === 0) return [];
+
+    const counts = regsWithOS.reduce((acc, reg) => {
+      const os = reg.device_os;
+      acc[os] = (acc[os] || 0) + 1;
+      return acc;
+    }, {});
+
+    return Object.keys(counts)
+      .map(os => ({
+        name: os,
+        value: counts[os],
+        fill: DEVICE_COLORS[os] || DEVICE_COLORS['Desconocido']
+      }))
+      .sort((a, b) => b.value - a.value); // Ordenamos del más usado al menos usado
+  }, [registrations])
 
 
   // --- RENDERIZADO CONDICIONAL ---
@@ -308,7 +331,7 @@ export default function ClientAnalyticsDashboard() {
           animate="show"
           className="space-y-8"
         >
-          {/* GRID DE KPIs SIMPLIFICADO */}
+          {/* GRID DE KPIs */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
             
             <motion.div variants={itemVariants} className="bg-white dark:bg-zinc-900 p-6 rounded-[2rem] shadow-sm border border-zinc-100 dark:border-zinc-800 flex flex-col justify-between">
@@ -357,9 +380,10 @@ export default function ClientAnalyticsDashboard() {
           </div>
 
           {/* ZONA DE GRÁFICOS */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
             
-            <motion.div variants={itemVariants} className="bg-white dark:bg-zinc-900 p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-zinc-100 dark:border-zinc-800 lg:col-span-2">
+            {/* Gráfico Lineal: Tráfico de Participantes (Ocupa 2 columnas en pantallas XL) */}
+            <motion.div variants={itemVariants} className="bg-white dark:bg-zinc-900 p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-zinc-100 dark:border-zinc-800 xl:col-span-2">
               <div className="flex items-center gap-3 mb-8">
                 <TrendingUp size={20} className="text-[#0071e3]" />
                 <h3 className="font-bold text-lg text-zinc-900 dark:text-white tracking-tight">Tráfico últimos 7 días</h3>
@@ -391,6 +415,64 @@ export default function ClientAnalyticsDashboard() {
               </div>
             </motion.div>
 
+            {/* NUEVO: Gráfico Circular de Dispositivos */}
+            <motion.div variants={itemVariants} className="bg-white dark:bg-zinc-900 p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-zinc-100 dark:border-zinc-800 xl:col-span-1">
+              <div className="flex items-center gap-3 mb-4">
+                <Smartphone size={20} className="text-[#0071e3]" />
+                <h3 className="font-bold text-lg text-zinc-900 dark:text-white tracking-tight">Dispositivos</h3>
+              </div>
+              
+              {deviceData.length > 0 ? (
+                <div className="h-[200px] w-full relative">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#ffffff', borderRadius: '16px', border: '1px solid #e4e4e7', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }}
+                        itemStyle={{ fontWeight: '900', fontSize: '14px', color: '#18181b' }}
+                        formatter={(value, name) => [`${value} regs`, name]}
+                      />
+                      <Pie
+                        data={deviceData}
+                        innerRadius={60}
+                        outerRadius={85}
+                        paddingAngle={4}
+                        dataKey="value"
+                        animationDuration={1500}
+                      >
+                        {deviceData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.fill} stroke="transparent" />
+                        ))}
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
+                  {/* Número central del anillo */}
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none mt-2">
+                    <span className="text-3xl font-black tracking-tighter text-zinc-900 dark:text-white leading-none">
+                      {deviceData.reduce((acc, d) => acc + d.value, 0)}
+                    </span>
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-400 mt-1">Registros</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="h-[200px] w-full flex items-center justify-center border-2 border-dashed border-zinc-100 dark:border-zinc-800 rounded-3xl">
+                   <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Sin datos recientes</p>
+                </div>
+              )}
+
+              {/* Leyenda Personalizada */}
+              {deviceData.length > 0 && (
+                <div className="mt-4 flex flex-wrap justify-center gap-3">
+                  {deviceData.map((d, i) => (
+                    <div key={i} className="flex items-center gap-1.5 bg-zinc-50 dark:bg-zinc-800/50 px-3 py-1.5 rounded-full border border-zinc-100 dark:border-zinc-700/50">
+                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: d.fill }}></div>
+                      <span className="text-[10px] font-bold text-zinc-600 dark:text-zinc-300">{d.name} ({d.value})</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+
+            {/* Mapa de Calor por Horas (Ocupa media fila en pantallas grandes) */}
             <motion.div variants={itemVariants} className="bg-white dark:bg-zinc-900 p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-zinc-100 dark:border-zinc-800">
               <div className="flex items-center gap-3 mb-8">
                 <Clock size={20} className="text-[#0071e3]" />
@@ -423,7 +505,8 @@ export default function ClientAnalyticsDashboard() {
               </div>
             </motion.div>
 
-            <motion.div variants={itemVariants} className="bg-white dark:bg-zinc-900 p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-zinc-100 dark:border-zinc-800">
+            {/* Gráfico de Barras: Top Tiendas (Ocupa media fila o menos si está en Grid 3) */}
+            <motion.div variants={itemVariants} className="bg-white dark:bg-zinc-900 p-6 md:p-8 rounded-[2.5rem] shadow-sm border border-zinc-100 dark:border-zinc-800 xl:col-span-2">
               <div className="flex items-center gap-3 mb-8">
                 <Store size={20} className="text-[#0071e3]" />
                 <h3 className="font-bold text-lg text-zinc-900 dark:text-white tracking-tight">Top 5 Tiendas (Volumen)</h3>

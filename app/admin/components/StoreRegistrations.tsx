@@ -4,23 +4,14 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Loader2, Image as ImageIcon, X, Ticket, CalendarClock, User, Smartphone, Info, Search, PlusCircle } from 'lucide-react'
 import { createPortal } from 'react-dom'
-import { motion, AnimatePresence, Variants } from 'framer-motion'
 
 interface Props {
   storeId: string
 }
 
-const tableVariants: Variants = {
-  hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { staggerChildren: 0.03 } }
-}
-
-const rowVariants: Variants = {
-  hidden: { opacity: 0, x: -10 },
-  show: { opacity: 1, x: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
-}
-
 const PAGE_SIZE = 25
+// Define tu dominio personalizado de Cloudflare aquí
+const R2_CUSTOM_DOMAIN = 'https://ptmassets.com'
 
 export default function StoreRegistrations({ storeId }: Props) {
   const [registrations, setRegistrations] = useState<any[]>([])
@@ -36,15 +27,8 @@ export default function StoreRegistrations({ storeId }: Props) {
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(true)
 
-  // NUEVO: Detector de dispositivo móvil para apagar animaciones pesadas
-  const [isMobile, setIsMobile] = useState(false)
-
   useEffect(() => {
     setMounted(true)
-    const checkMobile = () => setIsMobile(window.innerWidth < 768)
-    checkMobile()
-    window.addEventListener('resize', checkMobile)
-    return () => window.removeEventListener('resize', checkMobile)
   }, [])
 
   useEffect(() => {
@@ -128,12 +112,38 @@ export default function StoreRegistrations({ storeId }: Props) {
     }).format(date)
   }
 
-  const getThumbnailUrl = (fullUrl: string) => {
+  // --- LÓGICA OPTIMIZADA PARA DOMINIO PERSONALIZADO ---
+
+  // Transforma la URL base dependiendo de su origen
+  const normalizeUrl = (fullUrl: string) => {
     if (!fullUrl) return ''
-    if (fullUrl.includes('/storage/v1/object/public/')) {
-      return fullUrl.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + '?width=100&height=100&resize=contain'
+    
+    // Si la URL guardada en DB es la larga de desarrollo de R2, la forzamos a usar nuestro Custom Domain
+    if (fullUrl.includes('.r2.dev')) {
+      const urlObj = new URL(fullUrl);
+      // Retornamos el dominio personalizado + la ruta original del archivo (ej: /ID_CAMPAÑA/registros/foto.webp)
+      return `${R2_CUSTOM_DOMAIN}${urlObj.pathname}`;
     }
-    return fullUrl
+    
+    return fullUrl;
+  }
+
+  // Se usa para las miniaturas cuadraditas de la tabla
+  const getThumbnailUrl = (fullUrl: string) => {
+    const url = normalizeUrl(fullUrl);
+    
+    // Si es Supabase, le aplicamos su filtro de redimensión para no descargar la original pesada
+    if (url.includes('/storage/v1/object/public/')) {
+      return url.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + '?width=100&height=100&resize=contain'
+    }
+    
+    // Para Cloudflare, devolvemos la normalizada (como ya son WebP comprimidas de origen, está bien)
+    return url
+  }
+
+  // Se usa para el modal grande cuando le das clic
+  const getFullImageUrl = (fullUrl: string) => {
+    return normalizeUrl(fullUrl);
   }
 
   const ImageModal = () => {
@@ -152,7 +162,7 @@ export default function StoreRegistrations({ storeId }: Props) {
             <X size={28} strokeWidth={2.5} />
         </button>
         <div className="relative w-full max-w-5xl h-full max-h-[85vh] flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
-            <img src={selectedImage} alt="Voucher Ampliado" className="max-w-full max-h-full object-contain rounded-xl shadow-2xl animate-in zoom-in-95 duration-300" />
+            <img src={getFullImageUrl(selectedImage)} alt="Voucher Ampliado" className="max-w-full max-h-full object-contain rounded-xl shadow-2xl animate-in zoom-in-95 duration-300" />
         </div>
       </div>,
       document.body
@@ -160,7 +170,6 @@ export default function StoreRegistrations({ storeId }: Props) {
   }
 
   return (
-    // OPTIMIZACIÓN: Quitamos el backdrop-blur-xl en móviles, dejando colores sólidos ligeros.
     <div className="flex flex-col h-[500px] lg:h-[700px] bg-white dark:bg-zinc-900 md:bg-zinc-100/50 md:dark:bg-zinc-900/30 md:backdrop-blur-xl rounded-[2.5rem] border border-zinc-200 md:border-white dark:border-zinc-800 md:dark:border-zinc-800/50 p-6 shadow-sm md:shadow-inner relative overflow-hidden transition-all">
       
       {/* CABECERA */}
@@ -218,80 +227,67 @@ export default function StoreRegistrations({ storeId }: Props) {
                       </tr>
                   </thead>
                   
-                  {/* OPTIMIZACIÓN: Si es móvil, apagamos la animación inicial de lista para no trabar el renderizado */}
-                  <motion.tbody 
-                    variants={isMobile ? {} : tableVariants} 
-                    initial="hidden" 
-                    animate="show" 
-                    className="text-sm"
-                  >
-                      {registrations.map((reg) => {
-                          
-                          // OPTIMIZACIÓN: Si es móvil, renderizamos un <tr> normal, si es PC un <motion.tr> con animaciones
-                          const RowComponent: any = isMobile ? 'tr' : motion.tr;
-                          const rowProps = isMobile ? {} : { variants: rowVariants };
-
-                          return (
-                            <RowComponent 
-                                {...rowProps} 
-                                key={reg.id} 
-                                className="bg-zinc-50 md:bg-white dark:bg-zinc-800/40 shadow-sm border border-transparent hover:border-zinc-200 dark:hover:border-zinc-700 transition-all group md:hover:scale-[1.01]"
-                            >
-                                <td className="py-4 px-4 text-zinc-600 dark:text-zinc-400 whitespace-nowrap rounded-l-2xl border-t border-b border-l border-zinc-100 md:border-zinc-50 dark:border-zinc-800">
-                                    <div className="flex items-center justify-center gap-2 font-medium">
-                                        <CalendarClock size={14} className="opacity-40" />
-                                        {formatDate(reg.created_at)}
-                                    </div>
-                                </td>
-                                <td className="py-4 px-4 border-t border-b border-zinc-100 md:border-zinc-50 dark:border-zinc-800 text-center">
-                                    <div className="font-bold text-zinc-900 dark:text-zinc-100 text-base text-center">{reg.full_name}</div>
-                                    <div className="mt-1 flex items-center justify-center gap-1.5">
-                                        <span className="inline-flex items-center justify-center gap-1 bg-white md:bg-zinc-100 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 px-2 py-0.5 rounded-md text-[11px] font-bold tracking-wide shadow-sm md:shadow-none border border-zinc-200 md:border-transparent dark:border-zinc-700">
-                                            <User size={10} /> {reg.dni}
-                                        </span>
-                                    </div>
-                                </td>
-                                <td className="py-4 px-4 border-t border-b border-zinc-100 md:border-zinc-50 dark:border-zinc-800 text-center">
-                                    <div className="flex justify-center">
-                                        {reg.phone ? (
-                                            <div className="inline-flex items-center justify-center gap-1.5 bg-white md:bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-3 py-1.5 rounded-lg text-zinc-700 dark:text-zinc-300 font-medium shadow-sm md:shadow-none">
-                                                <Smartphone size={14} className="text-zinc-400" /> {reg.phone}
-                                            </div>
-                                        ) : <span className="text-zinc-400 italic text-xs">No provisto</span>}
-                                    </div>
-                                </td>
-                                <td className="py-4 px-4 text-center border-t border-b border-zinc-100 md:border-zinc-50 dark:border-zinc-800">
-                                    {reg.voucher_url ? (
-                                        <button 
-                                            onClick={() => setSelectedImage(reg.voucher_url)}
-                                            className="w-14 h-14 rounded-xl overflow-hidden border-2 border-zinc-200 dark:border-zinc-700 mx-auto hover:border-blue-500 hover:ring-2 hover:ring-blue-500/50 transition-all active:scale-90 shadow-sm relative group/btn"
-                                            title="Click para ampliar voucher"
-                                        >
-                                            <img src={getThumbnailUrl(reg.voucher_url)} alt="Voucher" loading="lazy" className="w-full h-full object-cover" />
-                                            <div className="absolute inset-0 bg-black/0 group-hover/btn:bg-black/20 transition-colors"></div>
-                                        </button>
-                                    ) : (
-                                        <div className="w-14 h-14 rounded-xl bg-white md:bg-zinc-100 dark:bg-zinc-800/50 flex items-center justify-center mx-auto border border-dashed border-zinc-300 dark:border-zinc-700">
-                                            <ImageIcon size={20} className="text-zinc-300 dark:text-zinc-600" />
-                                        </div>
-                                    )}
-                                </td>
-                                <td className="py-4 px-4 text-center rounded-r-2xl border-t border-b border-r border-zinc-100 md:border-zinc-50 dark:border-zinc-800">
-                                    {reg.prize?.name ? (
-                                        <span className="inline-flex items-center justify-center gap-1.5 bg-amber-100/50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-400 px-3 py-2 rounded-xl text-xs font-bold border border-amber-200/50 dark:border-amber-900/50 shadow-sm">
-                                            <Ticket size={14} className="text-amber-500" />
-                                            {reg.prize.name}
-                                        </span>
-                                    ) : (
-                                        <span className="inline-flex items-center justify-center gap-1.5 bg-zinc-100 dark:bg-zinc-800/50 text-zinc-500 dark:text-zinc-400 px-3 py-2 rounded-xl text-xs font-bold">
-                                            Sin premio (Agotado)
-                                        </span>
-                                    )}
-                                </td>
-                            </RowComponent>
-                          )
-                      })}
-                  </motion.tbody>
+                  <tbody className="text-sm">
+                      {registrations.map((reg, index) => (
+                          <tr 
+                              key={reg.id || index} 
+                              className="bg-zinc-50 md:bg-white dark:bg-zinc-800/40 shadow-sm border border-transparent hover:border-zinc-200 dark:hover:border-zinc-700 transition-all group md:hover:scale-[1.01]"
+                          >
+                              <td className="py-4 px-4 text-zinc-600 dark:text-zinc-400 whitespace-nowrap rounded-l-2xl border-t border-b border-l border-zinc-100 md:border-zinc-50 dark:border-zinc-800">
+                                  <div className="flex items-center justify-center gap-2 font-medium">
+                                      <CalendarClock size={14} className="opacity-40" />
+                                      {formatDate(reg.created_at)}
+                                  </div>
+                              </td>
+                              <td className="py-4 px-4 border-t border-b border-zinc-100 md:border-zinc-50 dark:border-zinc-800 text-center">
+                                  <div className="font-bold text-zinc-900 dark:text-zinc-100 text-base text-center">{reg.full_name}</div>
+                                  <div className="mt-1 flex items-center justify-center gap-1.5">
+                                      <span className="inline-flex items-center justify-center gap-1 bg-white md:bg-zinc-100 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 px-2 py-0.5 rounded-md text-[11px] font-bold tracking-wide shadow-sm md:shadow-none border border-zinc-200 md:border-transparent dark:border-zinc-700">
+                                          <User size={10} /> {reg.dni}
+                                      </span>
+                                  </div>
+                              </td>
+                              <td className="py-4 px-4 border-t border-b border-zinc-100 md:border-zinc-50 dark:border-zinc-800 text-center">
+                                  <div className="flex justify-center">
+                                      {reg.phone ? (
+                                          <div className="inline-flex items-center justify-center gap-1.5 bg-white md:bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-3 py-1.5 rounded-lg text-zinc-700 dark:text-zinc-300 font-medium shadow-sm md:shadow-none">
+                                              <Smartphone size={14} className="text-zinc-400" /> {reg.phone}
+                                          </div>
+                                      ) : <span className="text-zinc-400 italic text-xs">No provisto</span>}
+                                  </div>
+                              </td>
+                              <td className="py-4 px-4 text-center border-t border-b border-zinc-100 md:border-zinc-50 dark:border-zinc-800">
+                                  {reg.voucher_url ? (
+                                      <button 
+                                          onClick={() => setSelectedImage(reg.voucher_url)}
+                                          className="w-14 h-14 rounded-xl overflow-hidden border-2 border-zinc-200 dark:border-zinc-700 mx-auto hover:border-blue-500 hover:ring-2 hover:ring-blue-500/50 transition-all active:scale-90 shadow-sm relative group/btn"
+                                          title="Click para ampliar voucher"
+                                      >
+                                          <img src={getThumbnailUrl(reg.voucher_url)} alt="Voucher" loading="lazy" className="w-full h-full object-cover" />
+                                          <div className="absolute inset-0 bg-black/0 group-hover/btn:bg-black/20 transition-colors"></div>
+                                      </button>
+                                  ) : (
+                                      <div className="w-14 h-14 rounded-xl bg-white md:bg-zinc-100 dark:bg-zinc-800/50 flex items-center justify-center mx-auto border border-dashed border-zinc-300 dark:border-zinc-700">
+                                          <ImageIcon size={20} className="text-zinc-300 dark:text-zinc-600" />
+                                      </div>
+                                  )}
+                              </td>
+                              <td className="py-4 px-4 text-center rounded-r-2xl border-t border-b border-r border-zinc-100 md:border-zinc-50 dark:border-zinc-800">
+                                  {reg.prize?.name ? (
+                                      <span className="inline-flex items-center justify-center gap-1.5 bg-amber-100/50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-400 px-3 py-2 rounded-xl text-xs font-bold border border-amber-200/50 dark:border-amber-900/50 shadow-sm">
+                                          <Ticket size={14} className="text-amber-500" />
+                                          {reg.prize.name}
+                                      </span>
+                                  ) : (
+                                      <span className="inline-flex items-center justify-center gap-1.5 bg-zinc-100 dark:bg-zinc-800/50 text-zinc-500 dark:text-zinc-400 px-3 py-2 rounded-xl text-xs font-bold">
+                                          <Ticket size={14} className="text-zinc-500" />
+                                          Sin premio (Agotado)
+                                      </span>
+                                  )}
+                              </td>
+                          </tr>
+                      ))}
+                  </tbody>
               </table>
 
               {/* Botón Cargar Más */}

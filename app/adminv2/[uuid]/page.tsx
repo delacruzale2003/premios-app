@@ -1,8 +1,7 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, use } from 'react'
 import { createClient } from '@supabase/supabase-js'
-import { useParams } from 'next/navigation' 
 import {
   Layers,
   Save,
@@ -14,21 +13,26 @@ import {
   Users,
   CheckCircle2,
   Store,
-  Info
+  Info,
+  ArrowLeft
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
-// IMPORTAMOS TU NUEVO COMPONENTE (Ajusta la ruta según tu estructura)
+// IMPORTAMOS TUS COMPONENTES EXTERNOS
 import StoresSidebar from '@/app/admin/components/StoreSidebar'
+// Importamos tu componente real de registros (Ajusta el nombre del archivo si es diferente)
+import StoreRegistrations from '@/app/admin/components/StoreRegistrations' 
 
 // --- CONFIGURACIÓN DE SUPABASE ---
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-export default function SharedCampaignAdmin() {
-  const params = useParams()
-  const shareUuid = params?.uuid as string
+export default function SharedCampaignAdmin({ params }: { params: Promise<{ uuid: string }> }) {
+  
+  // 1. Desenvolvemos los parámetros de Next.js de forma segura
+  const unwrappedParams = use(params);
+  const shareUuid = unwrappedParams.uuid;
   
   // --- ESTADOS GLOBALES ---
   const [loading, setLoading] = useState(true)
@@ -44,7 +48,10 @@ export default function SharedCampaignAdmin() {
   const [localStock, setLocalStock] = useState<Record<string, number | string>>({})
   const [activeBatch, setActiveBatch] = useState(1) 
 
-  // NUEVO: Estado para avisarle al Sidebar que se guardó nuevo stock y debe recalcular
+  // Estado para alternar entre Inventario y Registros
+  const [activeView, setActiveView] = useState<'stock' | 'registrations'>('stock')
+
+  // Estado para avisarle al Sidebar que se guardó nuevo stock y debe recalcular
   const [stockRefreshTrigger, setStockRefreshTrigger] = useState(0)
 
   // --- CARGA INICIAL DINÁMICA ---
@@ -56,6 +63,8 @@ export default function SharedCampaignAdmin() {
 
   useEffect(() => {
     if (selectedStore) {
+      // Reiniciamos la vista a 'stock' cada vez que se cambia de tienda
+      setActiveView('stock')
       fetchStoreData(selectedStore.id)
     }
   }, [selectedStore])
@@ -175,7 +184,6 @@ export default function SharedCampaignAdmin() {
     }
 
     await fetchStoreData(selectedStore.id) 
-    // 🔥 Disparamos la señal para que el sidebar descargue los stocks actualizados
     setStockRefreshTrigger(prev => prev + 1)
     setIsSaving(false)
   }
@@ -259,7 +267,7 @@ export default function SharedCampaignAdmin() {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
-          {/* BARRA LATERAL: COMPONENTE MODULARIZADO */}
+          {/* BARRA LATERAL */}
           <aside className="lg:col-span-4 space-y-6">
              <StoresSidebar 
                 stores={stores}
@@ -268,7 +276,7 @@ export default function SharedCampaignAdmin() {
                 campaignId={campaign?.id}
                 campaignUrl={campaign?.campaign_url}
                 refreshStores={initAdmin}
-                isMobile={false} // O ajustarlo si manejas un hook de responsividad
+                isMobile={false} 
                 stockRefreshTrigger={stockRefreshTrigger}
              />
           </aside>
@@ -281,104 +289,124 @@ export default function SharedCampaignAdmin() {
                 <div className="flex flex-wrap gap-4 justify-between items-center bg-white dark:bg-zinc-900 p-2 sm:p-3 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800">
                    <div className="flex gap-1 pl-4">
                      <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-zinc-400">
-                       <Layers size={14} /> Inventario en Lotes
+                       {activeView === 'stock' ? <><Layers size={14} /> Inventario en Lotes</> : <><Users size={14} /> Registros de la Tienda</>}
                      </span>
                    </div>
 
                    <div className="flex items-center gap-4 w-full sm:w-auto justify-end px-2 sm:px-0">
-                     <a 
-                       href={`/admin/registrations?store=${selectedStore.id}`}
-                       className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 hover:text-blue-600 flex items-center gap-2 transition-colors px-4"
-                     >
-                       <Users size={14} /> Ver Registros
-                     </a>
+                     {/* ALTERNADOR DE VISTAS */}
+                     {activeView === 'stock' ? (
+                       <button 
+                         onClick={() => setActiveView('registrations')}
+                         className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 hover:text-blue-600 flex items-center gap-2 transition-colors px-4"
+                       >
+                         <Users size={14} /> Ver Registros
+                       </button>
+                     ) : (
+                       <button 
+                         onClick={() => setActiveView('stock')}
+                         className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 hover:text-blue-600 flex items-center gap-2 transition-colors px-4"
+                       >
+                         <ArrowLeft size={14} /> Volver a Inventario
+                       </button>
+                     )}
                      
-                     <button 
-                        onClick={saveStock}
-                        disabled={isSaving}
-                        className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-blue-500 active:scale-95 transition-all shadow-[0_8px_20px_rgba(37,99,235,0.3)] disabled:opacity-50"
-                      >
-                        {isSaving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
-                        Guardar Lotes
-                      </button>
+                     {activeView === 'stock' && (
+                       <button 
+                         onClick={saveStock}
+                         disabled={isSaving}
+                         className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-blue-500 active:scale-95 transition-all shadow-[0_8px_20px_rgba(37,99,235,0.3)] disabled:opacity-50"
+                       >
+                         {isSaving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+                         Guardar Lotes
+                       </button>
+                     )}
                    </div>
                 </div>
 
-                <div className="bg-white dark:bg-zinc-900 rounded-[3rem] shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden flex flex-col">
-                  <div className="p-6 md:p-8 border-b border-zinc-100 dark:border-zinc-800 flex flex-col xl:flex-row justify-between gap-6 bg-zinc-50/50 dark:bg-black/20">
-                     <div className="space-y-1 shrink-0">
-                       <h3 className="text-xl font-black uppercase tracking-tighter italic">Gestión de Stock</h3>
-                       <p className="text-zinc-400 text-xs font-medium">Sucursal: <span className="text-black dark:text-white">{selectedStore.name}</span></p>
-                     </div>
-                     
-                     <div className="flex bg-white dark:bg-black p-1.5 rounded-2xl shadow-inner border border-zinc-200 dark:border-zinc-800 overflow-x-auto custom-scrollbar w-full xl:w-auto">
-                       {[1, 2, 3, 4].map(num => {
-                         const totalStock = templates.reduce((sum, t) => sum + (parseInt(localStock[`${num}_${t.name}`] as string) || 0), 0)
+                {/* RENDERIZADO CONDICIONAL DE LA VISTA */}
+                {activeView === 'stock' ? (
+                  <div className="bg-white dark:bg-zinc-900 rounded-[3rem] shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden flex flex-col">
+                    <div className="p-6 md:p-8 border-b border-zinc-100 dark:border-zinc-800 flex flex-col xl:flex-row justify-between gap-6 bg-zinc-50/50 dark:bg-black/20">
+                       <div className="space-y-1 shrink-0">
+                         <h3 className="text-xl font-black uppercase tracking-tighter italic">Gestión de Stock</h3>
+                         <p className="text-zinc-400 text-xs font-medium">Sucursal: <span className="text-black dark:text-white">{selectedStore.name}</span></p>
+                       </div>
+                       
+                       <div className="flex bg-white dark:bg-black p-1.5 rounded-2xl shadow-inner border border-zinc-200 dark:border-zinc-800 overflow-x-auto custom-scrollbar w-full xl:w-auto">
+                         {[1, 2, 3, 4].map(num => {
+                           const totalStock = templates.reduce((sum, t) => sum + (parseInt(localStock[`${num}_${t.name}`] as string) || 0), 0)
+                           return (
+                           <button
+                             key={num}
+                             onClick={() => setActiveBatch(num)}
+                             className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap flex items-center gap-2 ${
+                               activeBatch === num ? 'bg-blue-600 text-white shadow-md' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                             }`}
+                           >
+                             Lote {num}
+                             <span className={`px-2 py-0.5 rounded-full text-[8px] ${activeBatch === num ? 'bg-white/20 text-white' : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400'}`}>
+                               {totalStock}
+                             </span>
+                           </button>
+                           )
+                         })}
+                       </div>
+                    </div>
+
+                    <div className="p-4 sm:p-6 md:p-8 grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-5">
+                       {templates.length === 0 ? (
+                         <div className="col-span-full py-10 flex flex-col items-center text-zinc-400 gap-3">
+                           <AlertCircle size={40} className="opacity-20" />
+                           <p className="font-black uppercase text-[10px] sm:text-xs tracking-widest text-center">No hay premios configurados</p>
+                         </div>
+                       ) : templates.map(t => {
+                         const stockVal = localStock[`${activeBatch}_${t.name}`] ?? 0
+                         
                          return (
-                         <button
-                           key={num}
-                           onClick={() => setActiveBatch(num)}
-                           className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap flex items-center gap-2 ${
-                             activeBatch === num ? 'bg-blue-600 text-white shadow-md' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800'
-                           }`}
-                         >
-                           Lote {num}
-                           <span className={`px-2 py-0.5 rounded-full text-[8px] ${activeBatch === num ? 'bg-white/20 text-white' : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400'}`}>
-                             {totalStock}
-                           </span>
-                         </button>
+                         <div key={t.id} className="bg-zinc-50 dark:bg-black/40 p-3 sm:p-5 rounded-[1.5rem] sm:rounded-[2rem] border border-zinc-100 dark:border-zinc-800 flex flex-col group transition-all hover:border-blue-300 dark:hover:border-blue-800 hover:shadow-md">
+                            <div className="w-full aspect-square bg-white dark:bg-zinc-800 rounded-xl sm:rounded-[1.5rem] overflow-hidden shadow-inner border border-zinc-100 dark:border-zinc-700 mb-3 sm:mb-4 group-hover:scale-[1.02] transition-transform flex items-center justify-center p-2 sm:p-3">
+                              {t.image_url ? (
+                                <img src={t.image_url} className="w-full h-full object-cover rounded-lg sm:rounded-xl" alt={t.name} />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-zinc-200"><Gift size={24} className="sm:w-8 sm:h-8" /></div>
+                              )}
+                            </div>
+                            <h4 className="font-black text-[11px] sm:text-[13px] uppercase tracking-tighter text-zinc-800 dark:text-zinc-100 mb-3 sm:mb-4 line-clamp-2 leading-tight min-h-[1.75rem] sm:min-h-[2rem]">
+                              {t.name}
+                            </h4>
+                            
+                            <div className="w-full mt-auto">
+                              <label className="text-[8px] sm:text-[9px] font-black uppercase text-zinc-400 ml-1 tracking-[0.1em] mb-1 block">Stock</label>
+                              <div className="flex items-center w-full px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl border transition-all shadow-sm bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 focus-within:ring-4 focus-within:ring-blue-500/20 focus-within:border-blue-500">
+                                <Gift size={14} className="shrink-0 mr-1.5 sm:mr-2 text-blue-500 hidden sm:block" />
+                                <input 
+                                  type="number"
+                                  min="0"
+                                  className="w-full bg-transparent font-black text-base sm:text-xl text-center sm:text-right outline-none text-zinc-900 dark:text-zinc-100"
+                                  value={stockVal}
+                                  onChange={e => handleUpdateStock(activeBatch, t.name, e.target.value)}
+                                />
+                              </div>
+                            </div>
+                         </div>
                          )
                        })}
-                     </div>
-                  </div>
+                    </div>
 
-                  <div className="p-4 sm:p-6 md:p-8 grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-5">
-                     {templates.length === 0 ? (
-                       <div className="col-span-full py-10 flex flex-col items-center text-zinc-400 gap-3">
-                         <AlertCircle size={40} className="opacity-20" />
-                         <p className="font-black uppercase text-[10px] sm:text-xs tracking-widest text-center">No hay premios configurados</p>
-                       </div>
-                     ) : templates.map(t => {
-                       const stockVal = localStock[`${activeBatch}_${t.name}`] ?? 0
-                       
-                       return (
-                       <div key={t.id} className="bg-zinc-50 dark:bg-black/40 p-3 sm:p-5 rounded-[1.5rem] sm:rounded-[2rem] border border-zinc-100 dark:border-zinc-800 flex flex-col group transition-all hover:border-blue-300 dark:hover:border-blue-800 hover:shadow-md">
-                          <div className="w-full aspect-square bg-white dark:bg-zinc-800 rounded-xl sm:rounded-[1.5rem] overflow-hidden shadow-inner border border-zinc-100 dark:border-zinc-700 mb-3 sm:mb-4 group-hover:scale-[1.02] transition-transform flex items-center justify-center p-2 sm:p-3">
-                            {t.image_url ? (
-                              <img src={t.image_url} className="w-full h-full object-cover rounded-lg sm:rounded-xl" alt={t.name} />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-zinc-200"><Gift size={24} className="sm:w-8 sm:h-8" /></div>
-                            )}
-                          </div>
-                          <h4 className="font-black text-[11px] sm:text-[13px] uppercase tracking-tighter text-zinc-800 dark:text-zinc-100 mb-3 sm:mb-4 line-clamp-2 leading-tight min-h-[1.75rem] sm:min-h-[2rem]">
-                            {t.name}
-                          </h4>
-                          
-                          <div className="w-full mt-auto">
-                            <label className="text-[8px] sm:text-[9px] font-black uppercase text-zinc-400 ml-1 tracking-[0.1em] mb-1 block">Stock</label>
-                            <div className="flex items-center w-full px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl border transition-all shadow-sm bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 focus-within:ring-4 focus-within:ring-blue-500/20 focus-within:border-blue-500">
-                              <Gift size={14} className="shrink-0 mr-1.5 sm:mr-2 text-blue-500 hidden sm:block" />
-                              <input 
-                                type="number"
-                                min="0"
-                                className="w-full bg-transparent font-black text-base sm:text-xl text-center sm:text-right outline-none text-zinc-900 dark:text-zinc-100"
-                                value={stockVal}
-                                onChange={e => handleUpdateStock(activeBatch, t.name, e.target.value)}
-                              />
-                            </div>
-                          </div>
-                       </div>
-                       )
-                     })}
+                    <div className="p-5 sm:p-6 bg-blue-50/50 dark:bg-blue-900/10 border-t border-blue-100 dark:border-blue-900/30 flex items-start sm:items-center gap-3">
+                       <Info size={20} className="text-blue-600 dark:text-blue-400 shrink-0 mt-0.5 sm:mt-0" />
+                       <p className="text-[10px] sm:text-xs font-bold text-blue-800 dark:text-blue-300 tracking-wide leading-relaxed">
+                          <strong className="uppercase">Importante:</strong> Los premios del <span className="underline">Lote {activeBatch + 1 > 4 ? 4 : activeBatch + 1}</span> se habilitarán automáticamente para la ruleta cuando la sumatoria de stock total del <span className="underline">Lote {activeBatch}</span> llegue a 0 en esta tienda.
+                       </p>
+                    </div>
                   </div>
-
-                  <div className="p-5 sm:p-6 bg-blue-50/50 dark:bg-blue-900/10 border-t border-blue-100 dark:border-blue-900/30 flex items-start sm:items-center gap-3">
-                     <Info size={20} className="text-blue-600 dark:text-blue-400 shrink-0 mt-0.5 sm:mt-0" />
-                     <p className="text-[10px] sm:text-xs font-bold text-blue-800 dark:text-blue-300 tracking-wide leading-relaxed">
-                        <strong className="uppercase">Importante:</strong> Los premios del <span className="underline">Lote {activeBatch + 1 > 4 ? 4 : activeBatch + 1}</span> se habilitarán automáticamente para la ruleta cuando la sumatoria de stock total del <span className="underline">Lote {activeBatch}</span> llegue a 0 en esta tienda.
-                     </p>
+                ) : (
+                  // VISTA DE REGISTROS DE LA TIENDA CON EL COMPONENTE REAL
+                  <div className="bg-white dark:bg-zinc-900 rounded-[3rem] shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden min-h-[500px]">
+                     <StoreRegistrations storeId={selectedStore.id} />
                   </div>
-                </div>
+                )}
 
               </div>
             ) : (
