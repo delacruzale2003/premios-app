@@ -1,76 +1,96 @@
 'use client'
 
-import Image from "next/image";
-import { useEffect } from "react";
-import { supabase } from "@/lib/supabase";
-import Link from "next/link";
+import { motion } from 'framer-motion'
+import { ArrowRight, Megaphone, CalendarDays, Shield } from 'lucide-react'
+import Link from 'next/link'
 
-export default function Home() {
-
-  useEffect(() => {
-    const checkConnection = async () => {
-      // Intentamos una consulta simple para ver si hay conexión
-      const { data, error } = await supabase.from('campaigns').select('count');
-      
-      console.log("--- Supabase Connection Check ---");
-      console.log("URL configurada:", process.env.NEXT_PUBLIC_SUPABASE_URL);
-      
-      if (error) {
-        console.error("❌ Error de conexión:", error.message);
-      } else {
-        console.log("✅ Conexión exitosa. Tablas accesibles.");
+export default function LandingHome() {
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.2
       }
-    };
+    }
+  }
 
-    checkConnection();
-  }, []);
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } as any }
+  }
 
   return (
-    <div className="flex min-h-screen w-full bg-white font-sans dark:bg-black">
-      {/* Al quitar max-w-3xl y ajustar el padding, la app fluye por todo el ancho */}
-      <main className="flex min-h-screen w-full flex-col justify-center px-6 py-12 sm:px-16 lg:px-32 xl:px-48">
-         
-         {/* Contenedor interno para que en pantallas gigantes el texto no se estire de forma ilegible */}
-         <div className="w-full max-w-5xl space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700"> 
-            
-            <Image
-              className="dark:invert mb-4 sm:mb-8"
-              src="/next.svg"
-              alt="Next.js logo"
-              width={140}
-              height={28}
-              priority
-            />
-            
-            <div className="flex flex-col gap-6 text-left">
-              <h1 className="text-4xl sm:text-5xl lg:text-7xl font-black leading-[1.1] tracking-tighter text-zinc-900 dark:text-white">
-                App de Entrega <br className="hidden sm:block" />
-                <span className="text-blue-600">de Premios 🎁</span>
-              </h1>
-              <p className="max-w-2xl text-lg sm:text-xl leading-relaxed text-zinc-500 dark:text-zinc-400 font-medium">
-                La base de datos está conectada. Abre la consola (F12) para verificar el estado de la conexión con Supabase en tiempo real.
-              </p>
-            </div>
+    <div className="min-h-screen bg-[#FAFAFA] text-zinc-900 flex flex-col items-center justify-center p-6 font-sans selection:bg-zinc-200">
+      
+      {/* Background subtle noise/gradient if desired, kept pure for now */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-zinc-100 via-white to-[#FAFAFA] -z-10" />
 
-            {/* Botones mejorados y adaptados para móviles (columna) y PC (fila) */}
-            <div className="flex flex-col sm:flex-row items-center gap-4 pt-6">
-              <button
-                onClick={() => console.log("Próximamente: Formulario de registro")}
-                className="flex h-14 w-full sm:w-auto items-center justify-center gap-2 rounded-full bg-blue-600 text-white px-8 font-black uppercase tracking-widest text-xs transition-all hover:bg-blue-500 hover:scale-105 active:scale-95 shadow-[0_8px_20px_rgba(37,99,235,0.3)]"
-              >
-                Comenzar Registro
-              </button>
-              
-              <Link 
-                href="/admin" 
-                className="flex h-14 w-full sm:w-auto items-center justify-center rounded-full border-2 border-zinc-200 dark:border-zinc-800 bg-transparent px-8 font-black uppercase tracking-widest text-xs text-zinc-600 dark:text-zinc-300 transition-all hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-900 active:scale-95"
-              >
-                Acceso Admin
-              </Link>
-            </div>
+      <motion.main 
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+        className="w-full max-w-4xl mx-auto flex flex-col items-center text-center"
+      >
+        
+        {/* Top Badge */}
+        <motion.div variants={itemVariants} className="mb-8">
+          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-100 border border-zinc-200 text-xs font-semibold tracking-widest text-zinc-500 uppercase">
+            <Shield size={14} />
+            System Control
+          </span>
+        </motion.div>
 
-         </div>
-      </main>
+        {/* Hero Title */}
+        <motion.h1 
+          variants={itemVariants}
+          className="text-5xl md:text-7xl font-black tracking-tighter text-zinc-900 mb-6 leading-tight"
+        >
+          Centralized <br className="hidden md:block" />
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-zinc-900 to-zinc-500">
+            Platform Hub
+          </span>
+        </motion.h1>
+
+        {/* Subtitle / Focus Areas */}
+        <motion.p 
+          variants={itemVariants}
+          className="text-lg md:text-xl text-zinc-500 max-w-2xl mb-12 font-medium"
+        >
+          Streamline your workflow. Access your core modules for <span className="text-zinc-900">Campaign Management</span> and <span className="text-zinc-900">Marketing Events</span> all in one place.
+        </motion.p>
+
+        {/* The Two Main Pillars (Visual representation only, clean) */}
+        <motion.div variants={itemVariants} className="flex flex-col sm:flex-row gap-6 mb-16 w-full max-w-2xl">
+          <div className="flex-1 bg-white p-6 rounded-2xl border border-zinc-100 shadow-sm flex flex-col items-center text-center">
+            <div className="w-12 h-12 rounded-full bg-zinc-50 flex items-center justify-center mb-4 text-zinc-800">
+              <Megaphone size={24} />
+            </div>
+            <h3 className="font-bold text-zinc-900">Campaign Management</h3>
+            <p className="text-sm text-zinc-500 mt-2">Oversee active promotions and prizes.</p>
+          </div>
+
+          <div className="flex-1 bg-white p-6 rounded-2xl border border-zinc-100 shadow-sm flex flex-col items-center text-center">
+            <div className="w-12 h-12 rounded-full bg-zinc-50 flex items-center justify-center mb-4 text-zinc-800">
+              <CalendarDays size={24} />
+            </div>
+            <h3 className="font-bold text-zinc-900">Marketing Events</h3>
+            <p className="text-sm text-zinc-500 mt-2">Track real-time branch activations.</p>
+          </div>
+        </motion.div>
+
+        {/* Only ONE Button: Admin Access */}
+        <motion.div variants={itemVariants}>
+          {/* Cambia el href a la ruta correcta de tu panel admin, ej: '/admin/login' */}
+          <Link href="/admin">
+            <button className="group relative inline-flex items-center gap-3 px-8 py-4 bg-zinc-900 text-white rounded-full font-bold text-lg hover:bg-zinc-800 transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1">
+              Admin Access
+              <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+            </button>
+          </Link>
+        </motion.div>
+
+      </motion.main>
     </div>
-  );
+  )
 }
