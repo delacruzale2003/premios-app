@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Plus, ArrowLeft, ChevronDown, Globe, LayoutDashboard, Lock, User, LogIn, Activity, HardDrive } from 'lucide-react'
+import { Plus, ArrowLeft, ChevronDown, Globe, LayoutDashboard, Lock, User, LogIn, Activity, HardDrive, FileText } from 'lucide-react'
 import Link from 'next/link'
 import CampaignDashboard from './components/CampaignDashboard'
 import StorageManager from './components/StorageManager' // <-- IMPORTAMOS EL GESTOR DE STORAGE
@@ -212,7 +212,16 @@ export default function AdminPage() {
                     <Activity size={16} /> Analíticas
                   </Link>
                 )}
-
+                {/* --- NUEVO BOTÓN: ADMIN LIST --- */}
+{activeCampaignUuid && (
+  <Link 
+    href={`/admin-list/${activeCampaignUuid}`}
+    target="_blank"
+    className="flex items-center justify-center gap-2 bg-[#a2e71a]/10 text-[#a2e71a] border border-[#a2e71a]/20 px-5 py-3 rounded-2xl text-sm font-black uppercase tracking-tighter hover:bg-[#a2e71a]/20 active:scale-95 transition-all animate-in fade-in slide-in-from-left-4 shrink-0"
+  >
+    <FileText size={16} /> Admin List
+  </Link>
+)}
                 <div className="hidden md:block w-px h-8 bg-zinc-200 dark:border-zinc-800 mx-1"></div>
 
                 {/* CREACIÓN DE CAMPAÑA */}
