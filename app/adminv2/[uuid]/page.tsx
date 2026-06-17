@@ -190,9 +190,11 @@ export default function SharedCampaignAdmin({ params }: { params: Promise<{ uuid
 
   const exportToExcel = async () => {
     setIsExporting(true)
+    
+    // 1. Agregamos 'voucher_url' y 'ticket_number' al select
     const { data } = await supabase
       .from('registrations')
-      .select('created_at, full_name, dni, phone, email, stores(name), prizes(name)')
+      .select('created_at, full_name, dni, phone, email, voucher_url, ticket_number, stores(name), prizes(name)')
       .eq('campaign_id', campaign.id)
     
     if (data) {
@@ -201,9 +203,13 @@ export default function SharedCampaignAdmin({ params }: { params: Promise<{ uuid
         Participante: r.full_name,
         DNI: r.dni,
         Telefono: r.phone,
+        // 2. Agregamos las nuevas columnas para el Excel
+        'Código Voucher': r.ticket_number || '-',
+        'Ruta Voucher': r.voucher_url || 'No adjunto', 
         Tienda: Array.isArray(r.stores) ? r.stores[0]?.name : (typeof r.stores === 'object' ? r.stores?.name : ''),
         Premio: Array.isArray(r.prizes) ? r.prizes[0]?.name : (typeof r.prizes === 'object' ? r.prizes?.name : '') || 'Ninguno'
       }))
+      
       const ws = XLSX.utils.json_to_sheet(formatted)
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, "Registros")
